@@ -1,0 +1,8 @@
+aiohttp
+python-telegram-bot
+pandas
+numpy
+matplotlib
+scikit-learn
+backtrader
+pytest

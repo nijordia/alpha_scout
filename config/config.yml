@@ -1,0 +1,9 @@
+api_key: "YOUR_TELEGRAM_BOT_API_KEY"
+chat_id: "YOUR_CHAT_ID"
+market_data_source: "API_OR_DATABASE_SOURCE"
+mean_reversion_window: 50  # Window size for mean reversion signals
+mean_reversion_threshold: 1.5  # Number of standard deviations for mean reversion
+momentum_threshold: 0.1
+notification_interval: 60  # in seconds
+backtest_start_date: "2022-01-01"
+backtest_end_date: "2023-01-01"
