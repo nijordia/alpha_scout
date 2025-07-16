@@ -151,3 +151,90 @@ class MeanReversionSignal:
             plt.savefig(save_path)
         
         return fig
+    
+    def get_latest_signal_formatted(self):
+        """
+        Get the latest signal with formatting information.
+        
+        Returns:
+        --------
+        dict
+            Dictionary containing:
+            - 'signal': The signal value ('buy', 'sell', or 'hold')
+            - 'emoji': Appropriate emoji for the signal
+            - 'formatted_text': Formatted text representation of the signal
+            - 'details': Additional signal details (price, bands, etc.)
+        """
+        # Make sure signals are calculated
+        if not hasattr(self, 'processed_data') or self.processed_data is None:
+            self.detect_signals()
+        
+        if self.processed_data.empty:
+            return {
+                'signal': 'hold',
+                'emoji': '⚪',
+                'formatted_text': 'HOLD (No data)',
+                'details': {}
+            }
+        
+        # Get the latest data point and signal
+        latest_data = self.processed_data.iloc[-1]
+        latest_signal = latest_data['signal']
+        
+        # Determine emoji based on signal
+        emoji = "🟢" if latest_signal == "buy" else "🔴" if latest_signal == "sell" else "⚪"
+        
+        # Format signal text
+        formatted_text = f"{emoji} {latest_signal.upper()}"
+        
+        # Include additional details
+        details = {
+            'price': latest_data[self.price_col],
+            'sma': latest_data['sma'],
+            'upper_band': latest_data['upper_band'],
+            'lower_band': latest_data['lower_band'],
+            'std': latest_data['std'],
+            'window': self.window,
+            'threshold': self.threshold,
+            'date': latest_data['date'] if 'date' in latest_data else None
+        }
+        
+        return {
+            'signal': latest_signal,
+            'emoji': emoji,
+            'formatted_text': formatted_text,
+            'details': details
+        }
+    
+
+    def detect_signals_for_user(self, user_id, user_prefs):
+        """
+        Detect signals using user-specific parameters.
+        
+        Parameters:
+        -----------
+        user_id : str
+            Telegram user ID
+        user_prefs : UserPreferencesManager
+            User preferences manager to get parameters
+            
+        Returns:
+        --------
+        pandas.DataFrame
+            DataFrame with signals using user parameters
+        """
+        # Get user parameters
+        params = user_prefs.get_signal_params(user_id, 'mean_reversion')
+        window = params.get('window', self.window)
+        threshold = params.get('threshold', self.threshold)
+        
+        # Create a new instance with user parameters
+        user_signal = MeanReversionSignal(
+            self.data, 
+            window=window,
+            threshold=threshold,
+            price_col=self.price_col
+        )
+        
+        # Detect signals with user parameters
+        return user_signal.detect_signals()

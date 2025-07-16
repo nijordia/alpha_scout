@@ -4,6 +4,7 @@ class SignalProcessor:
     """
     Process trading signals from different strategies.
     Follows clean architecture principles with dependency inversion.
+    This processor maintains separate signals from each strategy without combining them.
     """
     def __init__(self, signal_generators=None):
         """
@@ -34,6 +35,7 @@ class SignalProcessor:
     def process_signals(self, market_data=None, **kwargs) -> Dict[str, Any]:
         """
         Process signals from either market data or direct signal input.
+        Keeps signals separate from each strategy without combining.
         
         Parameters:
         -----------
@@ -45,10 +47,11 @@ class SignalProcessor:
         Returns:
         --------
         dict
-            Dictionary containing processed signals and combined decision
+            Dictionary containing processed signals from each strategy
         """
         # Clear previous processed results
         self.processed_results = {}
+        self.signals = {}
         
         # Process market data if provided
         if market_data is not None:
@@ -57,11 +60,8 @@ class SignalProcessor:
         # Process direct signals if provided
         self._process_from_direct_signals(kwargs)
         
-        # Prepare result with the current signals
-        result = {signal_type: signal for signal_type, signal in self.signals.items()}
-        result['combined'] = self._get_combined_signal()
-        
-        return result
+        # Return all signals without combining
+        return self.signals.copy()
     
     def _process_from_market_data(self, market_data) -> None:
         """Process signals from market data using registered generators."""
@@ -84,38 +84,6 @@ class SignalProcessor:
             if key.endswith('_signal'):
                 signal_type = key.replace('_signal', '')
                 self.signals[signal_type] = value
-    
-    def _get_combined_signal(self) -> str:
-        """
-        Combine different signals into a single decision.
-        This can be extended with more sophisticated logic as needed.
-        
-        Returns:
-        --------
-        str
-            The combined signal ('buy', 'sell', or 'hold')
-        """
-        # If we have no signals, return hold
-        if not self.signals:
-            return 'hold'
-        
-        # Count signal types
-        buy_count = list(self.signals.values()).count('buy')
-        sell_count = list(self.signals.values()).count('sell')
-        
-        # Simple majority voting
-        if buy_count > sell_count:
-            return 'buy'
-        elif sell_count > buy_count:
-            return 'sell'
-        
-        # No clear winner or equal votes, prioritize certain signals
-        # For example, mean_reversion might be considered more reliable
-        if 'mean_reversion' in self.signals:
-            return self.signals['mean_reversion']
-        
-        # Default to hold if no decision can be made
-        return 'hold'
     
     def get_signal_data(self, signal_type: str) -> Any:
         """
@@ -169,7 +137,6 @@ if __name__ == "__main__":
     
     # Register signal generators
     from src.market_signals.mean_reversion import MeanReversionSignal
-    from src.market_signals.momentum import MomentumSignal
     
     # Example data (would be real data in actual usage)
     import pandas as pd
@@ -186,8 +153,8 @@ if __name__ == "__main__":
     
     # Process signals
     signals = processor.process_signals(market_data=sample_data)
-    print(signals)
+    print(signals)  # Will show only individual signals without combining
     
     # Or process direct signals
-    direct_signals = processor.process_signals(mean_reversion_signal='buy', momentum_signal='sell')
-    print(direct_signals)
+    direct_signals = processor.process_signals(mean_reversion_signal='buy')
+    print(direct_signals)  # Shows the direct signal without combining
