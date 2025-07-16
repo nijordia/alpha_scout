@@ -2,17 +2,18 @@
   "tracked_stocks": [
     "SBLK",
     "BTC-USD",
-    "NKE"
+    "NKE",
+    "SPY"
   ],
   "signal_types": [
     "mean_reversion"
   ],
   "notification_time": "08:00",
   "created_at": "2025-07-16T21:53:06.175884",
-  "last_modified": "2025-07-16T22:32:27.672287",
+  "last_modified": "2025-07-17T00:03:19.993420",
   "signal_params": {
     "mean_reversion": {
-      "window": 50,
+      "window": 180,
       "threshold": 1.5
     }
   }
