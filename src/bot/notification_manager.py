@@ -1,12 +1,13 @@
-from telegram import Bot, ParseMode
 import logging
+from telegram import Bot
+from telegram.constants import ParseMode
 
 class NotificationManager:
     def __init__(self, bot_token):
         self.bot = Bot(token=bot_token)
         self.logger = logging.getLogger(__name__)
 
-    def send_notification(self, chat_id, message):
+    async def send_notification(self, chat_id, message):
         """
         Send a notification to a specific chat ID
         
@@ -23,7 +24,8 @@ class NotificationManager:
             True if the notification was sent successfully, False otherwise
         """
         try:
-            self.bot.send_message(
+            # Added await keyword for async API
+            await self.bot.send_message(
                 chat_id=chat_id, 
                 text=message,
                 parse_mode=ParseMode.MARKDOWN
@@ -33,7 +35,7 @@ class NotificationManager:
             self.logger.error(f"Error sending notification to {chat_id}: {e}")
             return False
 
-    def notify_signal(self, chat_id, stock, signal_type, signal_value, additional_details=None):
+    async def notify_signal(self, chat_id, stock, signal_type, signal_value, additional_details=None):
         """
         Send a signal notification
         
@@ -74,9 +76,9 @@ class NotificationManager:
                 key_display = key.replace("_", " ").title()
                 message += f"- {key_display}: {value}\n"
         
-        return self.send_notification(chat_id, message)
+        return await self.send_notification(chat_id, message)
 
-    def send_daily_summary(self, chat_id, signals_summary):
+    async def send_daily_summary(self, chat_id, signals_summary):
         """
         Send a daily summary of signals
         
@@ -96,7 +98,7 @@ class NotificationManager:
         
         if not signals_summary:
             message += "No signals to report today."
-            return self.send_notification(chat_id, message)
+            return await self.send_notification(chat_id, message)
         
         # Count signals by type
         buy_signals = []
@@ -125,4 +127,4 @@ class NotificationManager:
             for signal in sell_signals:
                 message += f"- {signal}\n"
         
-        return self.send_notification(chat_id, message)
+        return await self.send_notification(chat_id, message)

@@ -2,8 +2,10 @@ name: Market Signals Telegram Bot
 
 on:
   schedule:
-    # Run at 22:00 UTC every weekday (after US market close)
-    - cron: '0 22 * * 1-5'
+    # Run at 30 minutes after NYSE close (4:30 PM ET)
+    # This is 21:30 UTC during standard time, 20:30 UTC during daylight saving
+    - cron: '30 20 * * 1-5'  # During daylight saving
+    - cron: '30 21 * * 1-5'  # During standard time
   
   # Allow manual triggering for testing
   workflow_dispatch:
@@ -29,9 +31,8 @@ jobs:
     - name: Run market signals bot
       env:
         TELEGRAM_API_KEY: ${{ secrets.TELEGRAM_API_KEY }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
-        python src/bot.py --scheduled
+        python main.py --daily-run --force --ignore-time
     
     - name: Upload generated charts as artifacts
       uses: actions/upload-artifact@v3

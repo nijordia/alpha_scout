@@ -3,6 +3,7 @@ import argparse
 import os
 import sys
 import yaml
+import asyncio
 
 # Make sure the src directory is in the path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -85,11 +86,18 @@ def main():
             logger.info("Forcing notifications regardless of time")
         if args.test_user:
             logger.info(f"Testing for specific user: {args.test_user}")
-        send_daily_notifications(force=args.force, test_user=args.test_user, ignore_time=args.ignore_time)
+            
+        # Handle async or sync implementation
+        if asyncio.iscoroutinefunction(send_daily_notifications):
+            asyncio.run(send_daily_notifications(force=args.force, test_user=args.test_user, ignore_time=args.ignore_time))
+        else:
+            send_daily_notifications(force=args.force, test_user=args.test_user, ignore_time=args.ignore_time)
+            
         logger.info("Daily signal generation complete")
     else:
         # Start the bot for interactive mode
         try:
+            logger.info("Starting interactive bot mode")
             bot = TelegramBot(token=token)
             bot.run()
         except Exception as e:

@@ -3,6 +3,7 @@ import logging
 import yaml
 from datetime import datetime
 import argparse
+import asyncio
 
 from src.bot.user_preferences import UserPreferencesManager
 from src.market_signals.signal_service import SignalService
@@ -35,7 +36,7 @@ def load_config():
         logger.error(f"Error loading configuration: {e}")
         return {}
 
-def send_daily_notifications(force=False, test_user=None, ignore_time=False):
+async def send_daily_notifications(force=False, test_user=None, ignore_time=False):
     """
     Generate signals and send notifications to users
     
@@ -63,6 +64,16 @@ def send_daily_notifications(force=False, test_user=None, ignore_time=False):
     
     # Current time for filtering notifications
     current_time = datetime.now().strftime('%H:%M')
+
+
+    # When running with --force, send to all users regardless of time
+    # When running with --ignore-time, also ignore time constraints
+    if force or ignore_time:
+        logger.info(f"Running with force={force}, ignore_time={ignore_time}. Will send notifications regardless of time.")
+        # Process will continue for all users
+    else:
+        logger.info(f"Current time: {current_time}. Will only send to users with matching notification time.")
+        # Process will only send to users with matching notification_time
     
     # Stats for logging
     total_notifications_sent = 0
@@ -95,8 +106,8 @@ def send_daily_notifications(force=False, test_user=None, ignore_time=False):
                 users_notified += 1
                 logger.info(f"Found {len(active_signals)} stocks with active signals for user {user_id}")
                 
-                # Send daily summary
-                notification_manager.send_daily_summary(user_id, active_signals)
+                # Send daily summary - ADD AWAIT HERE
+                await notification_manager.send_daily_summary(user_id, active_signals)
                 total_notifications_sent += 1
                 
                 # Send individual notifications for each active signal
@@ -129,8 +140,8 @@ def send_daily_notifications(force=False, test_user=None, ignore_time=False):
                                 except Exception as e:
                                     logger.error(f"Error getting additional details for {stock}: {e}")
                             
-                            # Send individual notification
-                            notification_manager.notify_signal(
+                            # Send individual notification - ADD AWAIT HERE
+                            await notification_manager.notify_signal(
                                 user_id, stock, signal_type, value, signal_details
                             )
                             total_notifications_sent += 1
@@ -166,7 +177,9 @@ if __name__ == "__main__":
         logger.info("Forcing notification generation regardless of time")
         
     logger.info("Starting daily signal generation")
-    success = send_daily_notifications(force=args.force)
+    
+    # Use asyncio.run to run the async function
+    success = asyncio.run(send_daily_notifications(force=args.force))
     
     if success:
         logger.info("Daily signal generation complete - signals were sent")

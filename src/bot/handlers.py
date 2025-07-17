@@ -1,8 +1,14 @@
 import re
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
-from telegram.ext import CommandHandler, CallbackContext, ConversationHandler, MessageHandler, Filters, CallbackQueryHandler
 import logging
 import os
+import asyncio
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    CommandHandler, ContextTypes, ConversationHandler, 
+    MessageHandler, filters, CallbackQueryHandler
+)
+from telegram.constants import ParseMode
 
 from .user_preferences import UserPreferencesManager
 from src.data.fetcher import fetch_stock_data
@@ -23,7 +29,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def start(update: Update, context: CallbackContext) -> None:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a welcome message when the command /start is issued"""
     user_id = str(update.effective_user.id)
     user_name = update.effective_user.first_name
@@ -38,30 +44,37 @@ def start(update: Update, context: CallbackContext) -> None:
         f"Use /add to start tracking stocks."
     )
     
-    update.message.reply_text(welcome_message)
+    await update.message.reply_text(welcome_message)
 
-def add_stock(update: Update, context: CallbackContext) -> None:
+async def add_stock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Add a stock to the user's tracked list"""
     user_id = str(update.effective_user.id)
     
     # Check if a stock symbol was provided
     if not context.args:
-        update.message.reply_text("Please provide a stock symbol. Example: /add AAPL")
+        await update.message.reply_text("Please provide a stock symbol. Example: /add AAPL")
         return
     
     stock_symbol = context.args[0].upper()
     
     # Verify the stock symbol exists by trying to fetch data
     try:
-        data = fetch_stock_data(stock_symbol, start_date=None, end_date=None)
+        # Show that we're working on it
+        await update.message.reply_text(f"Verifying stock symbol {stock_symbol}...")
+        
+        # Run fetch_stock_data in a thread to avoid blocking
+        data = await asyncio.to_thread(
+            fetch_stock_data, stock_symbol, None, None
+        )
+        
         if data is None or len(data) == 0:
-            update.message.reply_text(f"Could not find data for stock symbol: {stock_symbol}. Please check the symbol and try again.")
+            await update.message.reply_text(f"Could not find data for stock symbol: {stock_symbol}. Please check the symbol and try again.")
             return
         
         logger.info(f"Successfully fetched data for {stock_symbol}")
     except Exception as e:
         logger.error(f"Error fetching stock data: {e}")
-        update.message.reply_text(f"Error verifying stock symbol: {stock_symbol}. Please try again later.")
+        await update.message.reply_text(f"Error verifying stock symbol: {stock_symbol}. Please try again later.")
         return
     
     # Add the stock to the user's preferences
@@ -69,20 +82,20 @@ def add_stock(update: Update, context: CallbackContext) -> None:
         preferences = user_prefs.get_user_preferences(user_id)
         tracked_stocks = preferences.get("tracked_stocks", [])
         
-        update.message.reply_text(
+        await update.message.reply_text(
             f"Added {stock_symbol} to your tracked stocks.\n\n"
             f"You are now tracking {len(tracked_stocks)} stocks."
         )
     else:
-        update.message.reply_text(f"Failed to add {stock_symbol} to your tracked stocks. Please try again.")
+        await update.message.reply_text(f"Failed to add {stock_symbol} to your tracked stocks. Please try again.")
 
-def remove_stock(update: Update, context: CallbackContext) -> None:
+async def remove_stock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Remove a stock from the user's tracked list"""
     user_id = str(update.effective_user.id)
     
     # Check if a stock symbol was provided
     if not context.args:
-        update.message.reply_text("Please provide a stock symbol. Example: /remove AAPL")
+        await update.message.reply_text("Please provide a stock symbol. Example: /remove AAPL")
         return
     
     stock_symbol = context.args[0].upper()
@@ -90,7 +103,7 @@ def remove_stock(update: Update, context: CallbackContext) -> None:
     # Check if the user is tracking this stock
     preferences = user_prefs.get_user_preferences(user_id)
     if stock_symbol not in preferences.get("tracked_stocks", []):
-        update.message.reply_text(f"You are not tracking {stock_symbol}.")
+        await update.message.reply_text(f"You are not tracking {stock_symbol}.")
         return
     
     # Remove the stock from the user's preferences
@@ -98,21 +111,21 @@ def remove_stock(update: Update, context: CallbackContext) -> None:
         preferences = user_prefs.get_user_preferences(user_id)
         tracked_stocks = preferences.get("tracked_stocks", [])
         
-        update.message.reply_text(
+        await update.message.reply_text(
             f"Removed {stock_symbol} from your tracked stocks.\n\n"
             f"You are now tracking {len(tracked_stocks)} stocks."
         )
     else:
-        update.message.reply_text(f"Failed to remove {stock_symbol} from your tracked stocks. Please try again.")
+        await update.message.reply_text(f"Failed to remove {stock_symbol} from your tracked stocks. Please try again.")
 
-def list_stocks(update: Update, context: CallbackContext) -> None:
+async def list_stocks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """List all stocks the user is tracking"""
     user_id = str(update.effective_user.id)
     preferences = user_prefs.get_user_preferences(user_id)
     tracked_stocks = preferences.get("tracked_stocks", [])
     
     if not tracked_stocks:
-        update.message.reply_text(
+        await update.message.reply_text(
             "You are not tracking any stocks yet.\n\n"
             "Use /add SYMBOL to start tracking stocks."
         )
@@ -121,32 +134,31 @@ def list_stocks(update: Update, context: CallbackContext) -> None:
     stocks_list = "\n".join(tracked_stocks)
     message = f"You are tracking {len(tracked_stocks)} stocks:\n\n{stocks_list}"
     
-    update.message.reply_text(message)
+    await update.message.reply_text(message)
 
-def set_notification_time(update: Update, context: CallbackContext) -> None:
+async def set_notification_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Set the time for daily notifications"""
     user_id = str(update.effective_user.id)
     
     # Check if a time was provided
     if not context.args:
-        update.message.reply_text("Please provide a time in 24-hour format. Example: /time 08:30")
+        await update.message.reply_text("Please provide a time in 24-hour format. Example: /time 08:30")
         return
     
     time_str = context.args[0]
     
     # Validate time format
-    import re
     if not re.match(r"^([01]\d|2[0-3]):([0-5]\d)$", time_str):
-        update.message.reply_text("Invalid time format. Please use HH:MM in 24-hour format. Example: 08:30")
+        await update.message.reply_text("Invalid time format. Please use HH:MM in 24-hour format. Example: 08:30")
         return
     
     # Update notification time in user preferences
     if user_prefs.update_notification_time(user_id, time_str):
-        update.message.reply_text(f"Your daily notification time has been set to {time_str} UTC.")
+        await update.message.reply_text(f"Your daily notification time has been set to {time_str} UTC.")
     else:
-        update.message.reply_text("Failed to update notification time. Please try again.")
+        await update.message.reply_text("Failed to update notification time. Please try again.")
 
-def settings(update: Update, context: CallbackContext) -> None:
+async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show settings menu"""
     user_id = str(update.effective_user.id)
     preferences = user_prefs.get_user_preferences(user_id)
@@ -164,19 +176,19 @@ def settings(update: Update, context: CallbackContext) -> None:
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("Select the signal types you want to track:", reply_markup=reply_markup)
+    await update.message.reply_text("Select the signal types you want to track:", reply_markup=reply_markup)
 
-def button_callback(update: Update, context: CallbackContext) -> None:
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle button clicks from inline keyboards"""
     query = update.callback_query
-    query.answer()
+    await query.answer()
     
     user_id = str(query.from_user.id)
     preferences = user_prefs.get_user_preferences(user_id)
     signal_types = preferences.get("signal_types", [])
     
     if query.data == "settings_done":
-        query.edit_message_text(text="Settings updated!")
+        await query.edit_message_text(text="Settings updated!")
         return
     
     elif query.data.startswith("toggle_"):
@@ -204,9 +216,9 @@ def button_callback(update: Update, context: CallbackContext) -> None:
         ]
         
         reply_markup = InlineKeyboardMarkup(keyboard)
-        query.edit_message_text(text="Select the signal types you want to track:", reply_markup=reply_markup)
+        await query.edit_message_text(text="Select the signal types you want to track:", reply_markup=reply_markup)
 
-def get_signals(update: Update, context: CallbackContext) -> None:
+async def get_signals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Get current signals for the user's tracked stocks"""
     user_id = str(update.effective_user.id)
     preferences = user_prefs.get_user_preferences(user_id)
@@ -214,7 +226,7 @@ def get_signals(update: Update, context: CallbackContext) -> None:
     signal_types = preferences.get("signal_types", ["mean_reversion"])
     
     if not tracked_stocks:
-        update.message.reply_text(
+        await update.message.reply_text(
             "You are not tracking any stocks yet.\n\n"
             "Use /add SYMBOL to start tracking stocks."
         )
@@ -226,19 +238,20 @@ def get_signals(update: Update, context: CallbackContext) -> None:
     mr_window = mr_params.get("window", 50)
     mr_threshold = mr_params.get("threshold", 1.5)
     
-    update.message.reply_text(
+    await update.message.reply_text(
         f"Fetching signals for {len(tracked_stocks)} stocks using your parameters:\n"
         f"- Mean Reversion: Window={mr_window}, Threshold={mr_threshold}\n\n"
         "This may take a moment..."
     )
     
-    # Rest of the function remains the same
+    # Process signals for each tracked stock
     signals_results = []
     
     for stock in tracked_stocks:
         try:
-            # Fetch the latest stock data
-            data = fetch_stock_data(stock)
+            # Fetch the latest stock data (asynchronously)
+            data = await asyncio.to_thread(fetch_stock_data, stock)
+            
             if data is None or len(data) == 0:
                 signals_results.append(f"❓ {stock}: Could not fetch data")
                 continue
@@ -286,20 +299,20 @@ def get_signals(update: Update, context: CallbackContext) -> None:
     else:
         message = "No signals were generated for your tracked stocks."
     
-    update.message.reply_text(message)
+    await update.message.reply_text(message)
 
-def error_handler(update: Update, context: CallbackContext) -> None:
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log errors and send a message to the user"""
     logger.error(msg="Exception while handling an update:", exc_info=context.error)
     
     try:
         # Send message to the user
         if update and update.effective_message:
-            update.effective_message.reply_text("Sorry, something went wrong. Please try again later.")
+            await update.effective_message.reply_text("Sorry, something went wrong. Please try again later.")
     except:
         pass
 
-def param_settings(update: Update, context: CallbackContext) -> None:
+async def param_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show signal parameter settings"""
     user_id = str(update.effective_user.id)
     preferences = user_prefs.get_user_preferences(user_id)
@@ -322,15 +335,15 @@ def param_settings(update: Update, context: CallbackContext) -> None:
     message += "`/setparam mean_reversion window VALUE`\n"
     message += "`/setparam mean_reversion threshold VALUE`\n"
     
-    update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
 
-def set_param(update: Update, context: CallbackContext) -> None:
+async def set_param(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Set a parameter value for a signal type"""
     user_id = str(update.effective_user.id)
     
     # Check if enough arguments are provided
     if len(context.args) < 3:
-        update.message.reply_text(
+        await update.message.reply_text(
             "Please provide a signal type, parameter name, and value.\n"
             "Example: `/setparam mean_reversion window 30`", 
             parse_mode=ParseMode.MARKDOWN
@@ -344,7 +357,7 @@ def set_param(update: Update, context: CallbackContext) -> None:
     # Validate signal type
     valid_signal_types = ["mean_reversion"]  # Add more as they become available
     if signal_type not in valid_signal_types:
-        update.message.reply_text(
+        await update.message.reply_text(
             f"Invalid signal type: {signal_type}. Valid types are: {', '.join(valid_signal_types)}"
         )
         return
@@ -353,7 +366,7 @@ def set_param(update: Update, context: CallbackContext) -> None:
     if signal_type == "mean_reversion":
         valid_params = ["window", "threshold"]
         if param_name not in valid_params:
-            update.message.reply_text(
+            await update.message.reply_text(
                 f"Invalid parameter for mean_reversion: {param_name}. Valid parameters are: {', '.join(valid_params)}"
             )
             return
@@ -373,46 +386,23 @@ def set_param(update: Update, context: CallbackContext) -> None:
         else:
             param_value = param_value_str
     except ValueError as e:
-        update.message.reply_text(f"Invalid parameter value: {str(e)}")
+        await update.message.reply_text(f"Invalid parameter value: {str(e)}")
         return
     
     # Update the parameter
     updated = user_prefs.update_signal_params(user_id, signal_type, {param_name: param_value})
     
     if updated:
-        update.message.reply_text(
+        await update.message.reply_text(
             f"Parameter updated: {signal_type} {param_name} = {param_value}"
         )
         
         # Show the updated settings
-        param_settings(update, context)
+        await param_settings(update, context)
     else:
-        update.message.reply_text("Failed to update parameter. Please try again.")
+        await update.message.reply_text("Failed to update parameter. Please try again.")
 
-# Add the following to the register_handlers function
-def register_handlers(dispatcher) -> None:
-    """Register all command handlers"""
-    # Existing handlers
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("help", help_command))
-    dispatcher.add_handler(CommandHandler("add", add_stock))
-    dispatcher.add_handler(CommandHandler("remove", remove_stock))
-    dispatcher.add_handler(CommandHandler("list", list_stocks))
-    dispatcher.add_handler(CommandHandler("signals", get_signals))
-    dispatcher.add_handler(CommandHandler("time", set_notification_time))
-    dispatcher.add_handler(CommandHandler("settings", settings))
-    
-    # New handlers for parameter settings
-    dispatcher.add_handler(CommandHandler("params", param_settings))
-    dispatcher.add_handler(CommandHandler("setparam", set_param))
-    
-    dispatcher.add_handler(CallbackQueryHandler(button_callback))
-    
-    # Add error handler
-    dispatcher.add_error_handler(error_handler)
-
-# Also update the help_command function to include the new commands
-def help_command(update: Update, context: CallbackContext) -> None:
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a help message when the command /help is issued"""
     help_text = (
         "Available commands:\n\n"
@@ -428,4 +418,24 @@ def help_command(update: Update, context: CallbackContext) -> None:
         "/setparam TYPE NAME VALUE - Set a signal parameter (e.g., /setparam mean_reversion window 30)"
     )
     
-    update.message.reply_text(help_text)
+    await update.message.reply_text(help_text)
+
+async def nyse_close_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Set notification time to 30 minutes after NYSE close"""
+    user_id = str(update.effective_user.id)
+    
+    # Get current date in Eastern Time
+    eastern = pytz.timezone('US/Eastern')
+    now = datetime.now(eastern)
+    
+    # NYSE closes at 16:00 ET, add 30 minutes
+    nyse_close_plus_30 = "16:30"
+    
+    # Update notification time
+    if user_prefs.update_notification_time(user_id, nyse_close_plus_30):
+        await update.message.reply_text(
+            f"Your daily notification time has been set to 30 minutes after NYSE close ({nyse_close_plus_30} ET).\n\n"
+            f"Note: This will be converted to your local timezone when notifications are sent."
+        )
+    else:
+        await update.message.reply_text("Failed to update notification time. Please try again.")
