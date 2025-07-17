@@ -27,14 +27,14 @@ class TestMarketSignals(unittest.TestCase):
         today = datetime.today()
         
         # Fetch real stock data for testing
-        self.stock_data = fetch_stock_data('SBLK', 
+        self.stock_data = fetch_stock_data('AAPL', 
                                           start_date='2024-01-01', 
                                           end_date=today.strftime('%Y-%m-%d'))
         
         if self.stock_data is None:
             print("Warning: Could not fetch real stock data. Using fallback test data.")
             self.stock_data = pd.DataFrame({
-                'date': pd.date_range(start='2023-01-01', periods=100),
+                'date': pd.date_range(start='2024-01-01', periods=100),
                 'close': [100 + i * 0.1 for i in range(100)],
                 'open': [99 + i * 0.1 for i in range(100)],
                 'high': [101 + i * 0.1 for i in range(100)],
@@ -44,7 +44,7 @@ class TestMarketSignals(unittest.TestCase):
         
         # Initialize signal classes with real data and configuration
         window = self.config.get('mean_reversion_window', 50)
-        threshold = self.config.get('mean_reversion_threshold', 1.5)
+        threshold = self.config.get('mean_reversion_threshold', 1)
         
         print(f"Using mean reversion parameters from config: window={window}, threshold={threshold}")
         self.mean_reversion = MeanReversionSignal(self.stock_data, config=self.config)
