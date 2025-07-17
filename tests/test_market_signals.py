@@ -1,3 +1,4 @@
+# For running this test use: python -m unittest tests.test_market_signals
 import unittest
 import pandas as pd
 import yaml
