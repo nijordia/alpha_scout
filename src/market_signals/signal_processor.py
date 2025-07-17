@@ -32,6 +32,7 @@ class SignalProcessor:
         """
         self.signal_generators[signal_type] = generator
     
+
     def process_signals(self, market_data=None, **kwargs) -> Dict[str, Any]:
         """
         Process signals from either market data or direct signal input.
@@ -60,8 +61,18 @@ class SignalProcessor:
         # Process direct signals if provided
         self._process_from_direct_signals(kwargs)
         
-        # Return all signals without combining
+        # Add combined signal - this is what was missing
+        if self.signals:
+            # For simplicity, just use the first signal as the combined one
+            first_signal_type = next(iter(self.signals))
+            self.signals['combined'] = self.signals[first_signal_type]
+        else:
+            self.signals['combined'] = 'hold'  # Default if no signals
+        
+        # Return all signals including combined
         return self.signals.copy()
+
+
     
     def _process_from_market_data(self, market_data) -> None:
         """Process signals from market data using registered generators."""
