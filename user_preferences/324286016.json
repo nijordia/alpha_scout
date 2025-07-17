@@ -5,14 +5,15 @@
     "NKE",
     "SPY",
     "KO",
-    "CRV-USD"
+    "CRV-USD",
+    "NVDA"
   ],
   "signal_types": [
     "mean_reversion"
   ],
   "notification_time": "08:00",
   "created_at": "2025-07-16T21:53:06.175884",
-  "last_modified": "2025-07-17T12:18:09.248182",
+  "last_modified": "2025-07-17T16:17:35.060676",
   "signal_params": {
     "mean_reversion": {
       "window": 180,
