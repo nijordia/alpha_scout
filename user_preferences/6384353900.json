@@ -1,11 +1,6 @@
 {
   "tracked_stocks": [
-    "SBLK",
-    "BTC-USD",
-    "NKE",
-    "SPY",
-    "KO",
-    "CRV-USD"
+    "NKE"
   ],
   "signal_types": [
     "mean_reversion",
@@ -13,12 +8,12 @@
     "volatility_breakout"
   ],
   "notification_time": "08:00",
-  "created_at": "2025-07-16T21:53:06.175884",
-  "last_modified": "2025-07-17T21:23:07.745101",
   "signal_params": {
     "mean_reversion": {
-      "window": 180,
+      "window": 50,
       "threshold": 1.5
     }
-  }
+  },
+  "created_at": "2025-07-17T21:25:16.762093",
+  "last_modified": "2025-07-17T21:25:40.799997"
 }

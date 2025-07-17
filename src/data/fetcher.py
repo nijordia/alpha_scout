@@ -28,6 +28,10 @@ def fetch_stock_data(symbol, start_date=None, end_date=None):
         # Reset index to make date a column
         data = data.reset_index()
         
+        # Convert timezone-aware dates to timezone-naive
+        if 'Date' in data.columns and hasattr(data['Date'].iloc[0], 'tz') and data['Date'].iloc[0].tz is not None:
+            data['Date'] = data['Date'].dt.tz_localize(None)
+        
         # Rename columns to lowercase for consistency
         new_columns = []
         for col in data.columns:
