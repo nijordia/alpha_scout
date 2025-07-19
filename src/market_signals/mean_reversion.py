@@ -152,6 +152,7 @@ class MeanReversionSignal:
         
         return fig
     
+    # Add this to the get_latest_signal_formatted method in MeanReversionSignal class
     def get_latest_signal_formatted(self):
         """
         Get the latest signal with formatting information.
@@ -159,11 +160,7 @@ class MeanReversionSignal:
         Returns:
         --------
         dict
-            Dictionary containing:
-            - 'signal': The signal value ('buy', 'sell', or 'hold')
-            - 'emoji': Appropriate emoji for the signal
-            - 'formatted_text': Formatted text representation of the signal
-            - 'details': Additional signal details (price, bands, etc.)
+            Dictionary containing signal information
         """
         # Make sure signals are calculated
         if not hasattr(self, 'processed_data') or self.processed_data is None:
@@ -193,7 +190,6 @@ class MeanReversionSignal:
             'sma': latest_data['sma'],
             'upper_band': latest_data['upper_band'],
             'lower_band': latest_data['lower_band'],
-            'std': latest_data['std'],
             'window': self.window,
             'threshold': self.threshold,
             'date': latest_data['date'] if 'date' in latest_data else None
@@ -206,7 +202,6 @@ class MeanReversionSignal:
             'details': details
         }
     
-
     def detect_signals_for_user(self, user_id, user_prefs):
         """
         Detect signals using user-specific parameters.

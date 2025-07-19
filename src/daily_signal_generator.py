@@ -119,6 +119,9 @@ async def send_daily_notifications(force=False, test_user=None, ignore_time=Fals
                             signal_details = {}
                             
                             # For mean reversion, include price and bands information
+ # Update the signal detail collection in send_daily_notifications
+
+                            # Inside the for loop for active signals, when collecting signal details:
                             if signal_type == "mean_reversion":
                                 try:
                                     # Fetch latest stock data
@@ -136,15 +139,110 @@ async def send_daily_notifications(force=False, test_user=None, ignore_time=Fals
                                         signal_info = mean_rev.get_latest_signal_formatted()
                                         
                                         # Extract details
-                                        signal_details = signal_info.get('details', {})
+                                        signal_details = signal_info.get('details', {})                                     
+# Add reliability metric
+                                        try:
+                                            from src.backtesting.signal_reliability import SignalReliabilityService
+                                            reliability_service = SignalReliabilityService()
+                                            signal_details['reliability'] = reliability_service.get_signal_reliability(
+                                                ticker=stock,
+                                                strategy_type='mean_reversion',
+                                                strategy_params={'window': window, 'threshold': threshold}
+                                            )
+                                        except Exception as e:
+                                            logger.error(f"Error getting reliability metrics for {stock}: {e}")
                                 except Exception as e:
                                     logger.error(f"Error getting additional details for {stock}: {e}")
+                            
+                            # For MA Crossover strategy
+                            elif signal_type == "ma_crossover":
+                                try:
+                                    # Fetch latest stock data
+                                    from src.data.fetcher import fetch_stock_data
+                                    data = fetch_stock_data(stock)
+                                    if data is not None and not data.empty:
+                                        # Get user parameters
+                                        ma_params = preferences.get("signal_params", {}).get("ma_crossover", {})
+                                        short_window = ma_params.get("short_window", 20)
+                                        long_window = ma_params.get("long_window", 50)
+                                        
+                                        # Create MA Crossover object with user parameters
+                                        from src.market_signals.momentum import MACrossoverSignal
+                                        ma_signal = MACrossoverSignal(data, short_window=short_window, long_window=long_window)
+                                        signal_info = ma_signal.get_latest_signal_formatted()
+                                        
+                                        # Extract details
+                                        signal_details = signal_info.get('details', {})
+                                        
+                                        # Add reliability metrics
+                                        try:
+                                            from src.backtesting.signal_reliability import SignalReliabilityService
+                                            reliability_service = SignalReliabilityService()
+                                            signal_details['reliability'] = reliability_service.get_signal_reliability(
+                                                ticker=stock,
+                                                strategy_type='ma_crossover',
+                                                strategy_params={'short_window': short_window, 'long_window': long_window}
+                                            )
+                                        except Exception as e:
+                                            logger.error(f"Error getting reliability metrics for {stock}: {e}")
+                                except Exception as e:
+                                    logger.error(f"Error getting additional details for {stock}: {e}")
+                            
+                            # For Volatility Breakout strategy
+                            elif signal_type == "volatility_breakout":
+                                try:
+                                    # Fetch latest stock data
+                                    from src.data.fetcher import fetch_stock_data
+                                    data = fetch_stock_data(stock)
+                                    if data is not None and not data.empty:
+                                        # Get user parameters
+                                        vb_params = preferences.get("signal_params", {}).get("volatility_breakout", {})
+                                        atr_window = vb_params.get("atr_window", 14)
+                                        atr_multiplier = vb_params.get("atr_multiplier", 1.5)
+                                        breakout_window = vb_params.get("breakout_window", 20)
+                                        
+                                        # Create Volatility Breakout object with user parameters
+                                        from src.market_signals.momentum import VolatilityBreakoutSignal
+                                        vb_signal = VolatilityBreakoutSignal(
+                                            data, 
+                                            atr_window=atr_window,
+                                            atr_multiplier=atr_multiplier,
+                                            breakout_window=breakout_window
+                                        )
+                                        signal_info = vb_signal.get_latest_signal_formatted()
+                                        
+                                        # Extract details
+                                        signal_details = signal_info.get('details', {})
+                                        
+                                        # Add reliability metrics
+                                        try:
+                                            from src.backtesting.signal_reliability import SignalReliabilityService
+                                            reliability_service = SignalReliabilityService()
+                                            signal_details['reliability'] = reliability_service.get_signal_reliability(
+                                                ticker=stock,
+                                                strategy_type='volatility_breakout',
+                                                strategy_params={
+                                                    'atr_window': atr_window,
+                                                    'atr_multiplier': atr_multiplier,
+                                                    'breakout_window': breakout_window
+                                                }
+                                            )
+                                        except Exception as e:
+                                            logger.error(f"Error getting reliability metrics for {stock}: {e}")
+                                except Exception as e:
+                                    logger.error(f"Error getting additional details for {stock}: {e}")    
+                                
+                                
+                                
+                            
                             
                             # Send individual notification - ADD AWAIT HERE
                             await notification_manager.notify_signal(
                                 user_id, stock, signal_type, value, signal_details
                             )
                             total_notifications_sent += 1
+
+                            
             else:
                 # No active signals for this user
                 logger.info(f"No active signals for user {user_id}")

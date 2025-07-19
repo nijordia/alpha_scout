@@ -15,7 +15,7 @@ from telegram.ext import (
 from src.bot.handlers import (
     start, help_command, add_stock, remove_stock, list_stocks, 
     get_signals, set_notification_time, settings, button_callback,
-    param_settings, set_param, nyse_close_command  # Add the new handler here
+    param_settings, set_param, metrics_explanation, nyse_close_command  # Add the new handler here
 )
 
 class TelegramBot:
@@ -41,6 +41,7 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("settings", settings))
         self.application.add_handler(CommandHandler("params", param_settings))
         self.application.add_handler(CommandHandler("setparam", set_param))
+        self.application.add_handler(CommandHandler("metrics", metrics_explanation))
         self.application.add_handler(CommandHandler("nyse_close", nyse_close_command))
         
         # Register message handlers

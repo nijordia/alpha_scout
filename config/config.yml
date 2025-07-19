@@ -1,8 +1,16 @@
-api_key: "8093282303:AAEqfy1qngjmQu9N1Y6N1ImluEn-DfxzPts"
-chat_id: "324286016"
 mean_reversion_window: 50  # Window size for mean reversion signals
 mean_reversion_threshold: 1.5  # Number of standard deviations for mean reversion
+
+# Moving Average Crossover parameters
+momentum_short_window: 20  # Short-term moving average window
+momentum_long_window: 50   # Long-term moving average window
 momentum_threshold: 0.1
+
+# Volatility Breakout parameters
+volatility_atr_window: 14       # Window for ATR calculation
+volatility_atr_multiplier: 1.5  # Multiplier for ATR to determine significant breakouts
+volatility_breakout_window: 20  # Window for breakout detection
+
 notification_interval: 60  # in seconds
 backtest_start_date: "2022-01-01"
 backtest_end_date: "2023-01-01"

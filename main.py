@@ -4,6 +4,9 @@ import os
 import sys
 import yaml
 import asyncio
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Make sure the src directory is in the path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -73,10 +76,10 @@ def main():
     config = load_config()
     
     # Get token from args or config
-    token = args.token or config.get('api_key')
+    token = args.token or os.environ.get('TELEGRAM_API_KEY') or config.get('api_key')
     
     if not token:
-        logger.error("No Telegram bot token provided. Please add it to config.yml or use --token")
+        logger.error("No Telegram bot token provided. Please add it to .env or use --token")
         exit(1)
     
     if args.daily_run:

@@ -1,0 +1,19 @@
+{
+  "tracked_stocks": [
+    "NKE"
+  ],
+  "signal_types": [
+    "mean_reversion",
+    "ma_crossover",
+    "volatility_breakout"
+  ],
+  "notification_time": "08:00",
+  "signal_params": {
+    "mean_reversion": {
+      "window": 50,
+      "threshold": 1.5
+    }
+  },
+  "created_at": "2025-07-17T21:25:16.762093",
+  "last_modified": "2025-07-17T21:25:40.799997"
+}

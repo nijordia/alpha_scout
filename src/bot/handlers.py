@@ -169,7 +169,14 @@ async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             InlineKeyboardButton("Mean Reversion", callback_data="toggle_mean_reversion"),
             InlineKeyboardButton("✅" if "mean_reversion" in signal_types else "❌", callback_data="toggle_mean_reversion")
         ],
-        # Add more signal types as they become available
+        [
+            InlineKeyboardButton("Moving Average Crossover", callback_data="toggle_ma_crossover"),
+            InlineKeyboardButton("✅" if "ma_crossover" in signal_types else "❌", callback_data="toggle_ma_crossover")
+        ],
+        [
+            InlineKeyboardButton("Volatility Breakout", callback_data="toggle_volatility_breakout"),
+            InlineKeyboardButton("✅" if "volatility_breakout" in signal_types else "❌", callback_data="toggle_volatility_breakout")
+        ],
         [
             InlineKeyboardButton("Done", callback_data="settings_done")
         ]
@@ -209,7 +216,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 InlineKeyboardButton("Mean Reversion", callback_data="toggle_mean_reversion"),
                 InlineKeyboardButton("✅" if "mean_reversion" in signal_types else "❌", callback_data="toggle_mean_reversion")
             ],
-            # Add more signal types as they become available
+            [
+                InlineKeyboardButton("Moving Average Crossover", callback_data="toggle_ma_crossover"),
+                InlineKeyboardButton("✅" if "ma_crossover" in signal_types else "❌", callback_data="toggle_ma_crossover")
+            ],
+            [
+                InlineKeyboardButton("Volatility Breakout", callback_data="toggle_volatility_breakout"),
+                InlineKeyboardButton("✅" if "volatility_breakout" in signal_types else "❌", callback_data="toggle_volatility_breakout")
+            ],
             [
                 InlineKeyboardButton("Done", callback_data="settings_done")
             ]
@@ -224,81 +238,226 @@ async def get_signals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     preferences = user_prefs.get_user_preferences(user_id)
     tracked_stocks = preferences.get("tracked_stocks", [])
     signal_types = preferences.get("signal_types", ["mean_reversion"])
-    
+
     if not tracked_stocks:
         await update.message.reply_text(
             "You are not tracking any stocks yet.\n\n"
             "Use /add SYMBOL to start tracking stocks."
         )
         return
-    
+
     # Get signal parameters for display
     signal_params = preferences.get("signal_params", {})
-    mr_params = signal_params.get("mean_reversion", {"window": 50, "threshold": 1.5})
-    mr_window = mr_params.get("window", 50)
-    mr_threshold = mr_params.get("threshold", 1.5)
-    
+
+    # Prepare parameter display message
+    params_text = ""
+    if "mean_reversion" in signal_types:
+        mr_params = signal_params.get("mean_reversion", {"window": 50, "threshold": 1.5})
+        mr_window = mr_params.get("window", 50)
+        mr_threshold = mr_params.get("threshold", 1.5)
+        params_text += f"- Mean Reversion: Window={mr_window}, Threshold={mr_threshold}\n"
+
+    if "ma_crossover" in signal_types:
+        ma_params = signal_params.get("ma_crossover", {"short_window": 20, "long_window": 50})
+        short_window = ma_params.get("short_window", 20)
+        long_window = ma_params.get("long_window", 50)
+        params_text += f"- Moving Average: Short={short_window}, Long={long_window}\n"
+
+    if "volatility_breakout" in signal_types:
+        vb_params = signal_params.get("volatility_breakout", {
+            "atr_window": 14, "atr_multiplier": 1.5, "breakout_window": 20
+        })
+        atr_window = vb_params.get("atr_window", 14)
+        atr_multiplier = vb_params.get("atr_multiplier", 1.5)
+        breakout_window = vb_params.get("breakout_window", 20)
+        params_text += f"- Volatility: ATR={atr_window}, Mult={atr_multiplier}, Window={breakout_window}\n"
+
     await update.message.reply_text(
         f"Fetching signals for {len(tracked_stocks)} stocks using your parameters:\n"
-        f"- Mean Reversion: Window={mr_window}, Threshold={mr_threshold}\n\n"
+        f"{params_text}\n"
         "This may take a moment..."
     )
-    
+
     # Process signals for each tracked stock
     signals_results = []
-    
+
+    # Import needed signal classes
+    from src.market_signals.mean_reversion import MeanReversionSignal
+    from src.market_signals.momentum import MACrossoverSignal, VolatilityBreakoutSignal
+
+    # Import reliability service once
+    from src.backtesting.signal_reliability import SignalReliabilityService
+    reliability_service = SignalReliabilityService()
+
     for stock in tracked_stocks:
         try:
-            # Fetch the latest stock data (asynchronously)
+            # Fetch the latest stock data only once
             data = await asyncio.to_thread(fetch_stock_data, stock)
-            
             if data is None or len(data) == 0:
                 signals_results.append(f"❓ {stock}: Could not fetch data")
                 continue
-            
+
             signals = []
-            
-            # Process mean reversion signals if enabled
+
+            # Helper to calculate buy & hold return for the same period
+            def calc_bh_return(data, period):
+                if len(data) < period:
+                    return None
+                start_price = data['close'].iloc[-period]
+                end_price = data['close'].iloc[-1]
+                return (end_price - start_price) / start_price * 100
+
             if "mean_reversion" in signal_types:
                 try:
-                    # Get user's custom parameters for mean reversion
                     mr_params = preferences.get("signal_params", {}).get("mean_reversion", {})
                     window = mr_params.get("window", 50)
                     threshold = mr_params.get("threshold", 1.5)
-                    
-                    # Initialize mean reversion signal with user's parameters
+
                     mean_rev = MeanReversionSignal(data, window=window, threshold=threshold)
                     signal_info = mean_rev.get_latest_signal_formatted()
-                    
-                    # Add the formatted signal information
-                    signals.append(f"Mean Reversion: {signal_info['formatted_text']}")
-                    
-                    # Log additional details for debugging
-                    logger.debug(f"{stock} mean reversion: {signal_info['signal']} " +
-                            f"(Price: {signal_info['details']['price']:.2f}, " +
-                            f"SMA: {signal_info['details']['sma']:.2f}, " +
-                            f"Bands: {signal_info['details']['lower_band']:.2f}-{signal_info['details']['upper_band']:.2f})")
+
+                    signal_text = f"Mean Reversion: {signal_info['formatted_text']}"
+
+                    try:
+                        reliability = reliability_service.get_signal_reliability(
+                            ticker=stock,
+                            strategy_type='mean_reversion',
+                            strategy_params={'window': window, 'threshold': threshold}
+                        )
+                        # Use the same period as reliability metrics
+                        period = reliability.get('period', 30)
+                        bh_return = calc_bh_return(data, period)
+                        avg_return = reliability.get('avg_return', 0)
+                        if bh_return is not None:
+                            vs_bh = avg_return - bh_return
+                            vs_bh_text = f" | vs BH: {'+' if vs_bh > 0 else ''}{vs_bh:.2f}%"
+                        else:
+                            vs_bh_text = ""
+                        reliability_text = (
+                            f" | Win: {reliability['win_rate']}% | Avg: {'+' if avg_return > 0 else ''}{avg_return}%{vs_bh_text}"
+                        )
+                        signal_text += reliability_text
+
+                    except ValueError as e:
+                        logger.warning(f"Insufficient data for {stock} mean reversion reliability: {e}")
+                        signal_text += " | Metrics: Insufficient historical data"
+                    except Exception as e:
+                        logger.error(f"Error calculating reliability for {stock} mean reversion: {e}")
+                        signal_text += " | Metrics: Calculation error"
+
+                    signals.append(signal_text)
                 except Exception as e:
                     logger.error(f"Error processing mean reversion signal for {stock}: {e}")
-                    signals.append("Mean Reversion: ❌ ERROR")
-            
+
+            if "ma_crossover" in signal_types:
+                try:
+                    ma_params = preferences.get("signal_params", {}).get("ma_crossover", {})
+                    short_window = ma_params.get("short_window", 20)
+                    long_window = ma_params.get("long_window", 50)
+
+                    ma_signal = MACrossoverSignal(data, short_window=short_window, long_window=long_window)
+                    signal_info = ma_signal.get_latest_signal_formatted()
+
+                    signal_text = f"MA Crossover: {signal_info['formatted_text']}"
+
+                    try:
+                        reliability = reliability_service.get_signal_reliability(
+                            ticker=stock,
+                            strategy_type='ma_crossover',
+                            strategy_params={'short_window': short_window, 'long_window': long_window}
+                        )
+                        period = reliability.get('period', 30)
+                        bh_return = calc_bh_return(data, period)
+                        avg_return = reliability.get('avg_return', 0)
+                        if bh_return is not None:
+                            vs_bh = avg_return - bh_return
+                            vs_bh_text = f" | vs BH: {'+' if vs_bh > 0 else ''}{vs_bh:.2f}%"
+                        else:
+                            vs_bh_text = ""
+                        reliability_text = (
+                            f" | Win: {reliability['win_rate']}% | Avg: {'+' if avg_return > 0 else ''}{avg_return}%{vs_bh_text}"
+                        )
+                        signal_text += reliability_text
+
+                    except ValueError as e:
+                        logger.warning(f"Insufficient data for {stock} MA crossover reliability: {e}")
+                        signal_text += " | Metrics: Insufficient historical data"
+                    except Exception as e:
+                        logger.error(f"Error calculating reliability for {stock} MA crossover: {e}")
+                        signal_text += " | Metrics: Calculation error"
+
+                    signals.append(signal_text)
+                except Exception as e:
+                    logger.error(f"Error processing MA crossover signal for {stock}: {e}")
+
+            if "volatility_breakout" in signal_types:
+                try:
+                    vb_params = preferences.get("signal_params", {}).get("volatility_breakout", {})
+                    atr_window = vb_params.get("atr_window", 14)
+                    atr_multiplier = vb_params.get("atr_multiplier", 1.5)
+                    breakout_window = vb_params.get("breakout_window", 20)
+
+                    vb_signal = VolatilityBreakoutSignal(
+                        data,
+                        atr_window=atr_window,
+                        atr_multiplier=atr_multiplier,
+                        breakout_window=breakout_window
+                    )
+                    signal_info = vb_signal.get_latest_signal_formatted()
+
+                    signal_text = f"Volatility Breakout: {signal_info['formatted_text']}"
+
+                    try:
+                        reliability = reliability_service.get_signal_reliability(
+                            ticker=stock,
+                            strategy_type='volatility_breakout',
+                            strategy_params={
+                                'atr_window': atr_window,
+                                'atr_multiplier': atr_multiplier,
+                                'breakout_window': breakout_window
+                            }
+                        )
+                        period = reliability.get('period', 30)
+                        bh_return = calc_bh_return(data, period)
+                        avg_return = reliability.get('avg_return', 0)
+                        if bh_return is not None:
+                            vs_bh = avg_return - bh_return
+                            vs_bh_text = f" | vs BH: {'+' if vs_bh > 0 else ''}{vs_bh:.2f}%"
+                        else:
+                            vs_bh_text = ""
+                        reliability_text = (
+                            f" | Win: {reliability['win_rate']}% | Avg: {'+' if avg_return > 0 else ''}{avg_return}%{vs_bh_text}"
+                        )
+                        signal_text += reliability_text
+
+                    except ValueError as e:
+                        logger.warning(f"Insufficient data for {stock} volatility breakout reliability: {e}")
+                        signal_text += " | Metrics: Insufficient historical data"
+                    except Exception as e:
+                        logger.error(f"Error calculating reliability for {stock} volatility breakout: {e}")
+                        signal_text += " | Metrics: Calculation error"
+
+                    signals.append(signal_text)
+                except Exception as e:
+                    logger.error(f"Error processing volatility breakout signal for {stock}: {e}")
+
             # Format and add the signals to the results
             if signals:
                 signal_text = "\n  - ".join(signals)
                 signals_results.append(f"{stock}:\n  - {signal_text}")
             else:
                 signals_results.append(f"{stock}: No signals generated")
-                
+
         except Exception as e:
             logger.error(f"Error getting signals for {stock}: {e}")
             signals_results.append(f"❌ {stock}: Error getting signals")
-                
+
     # Send the results
     if signals_results:
         message = "Current signals for your tracked stocks:\n\n" + "\n\n".join(signals_results)
     else:
         message = "No signals were generated for your tracked stocks."
-    
+
     await update.message.reply_text(message)
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -329,11 +488,39 @@ async def param_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         message += f"- Window: `{window}`\n"
         message += f"- Threshold: `{threshold}`\n\n"
     
-    # Add other signal types as they become available
+    # Add MA Crossover parameters
+    if "ma_crossover" in signal_types:
+        ma_params = preferences.get("signal_params", {}).get("ma_crossover", {})
+        short_window = ma_params.get("short_window", 20)
+        long_window = ma_params.get("long_window", 50)
+        message += f"*Moving Average Crossover Parameters:*\n"
+        message += f"- Short Window: `{short_window}`\n"
+        message += f"- Long Window: `{long_window}`\n\n"
     
-    message += "Use the following commands to update parameters:\n"
+    # Add Volatility Breakout parameters
+    if "volatility_breakout" in signal_types:
+        vb_params = preferences.get("signal_params", {}).get("volatility_breakout", {})
+        atr_window = vb_params.get("atr_window", 14)
+        atr_multiplier = vb_params.get("atr_multiplier", 1.5)
+        breakout_window = vb_params.get("breakout_window", 20)
+        message += f"*Volatility Breakout Parameters:*\n"
+        message += f"- ATR Window: `{atr_window}`\n"
+        message += f"- ATR Multiplier: `{atr_multiplier}`\n"
+        message += f"- Breakout Window: `{breakout_window}`\n\n"
+    
+    message += "*Update Parameters Commands:*\n"
+    message += "For Mean Reversion:\n"
     message += "`/setparam mean_reversion window VALUE`\n"
-    message += "`/setparam mean_reversion threshold VALUE`\n"
+    message += "`/setparam mean_reversion threshold VALUE`\n\n"
+    
+    message += "For Moving Average Crossover:\n"
+    message += "`/setparam ma_crossover short_window VALUE`\n"
+    message += "`/setparam ma_crossover long_window VALUE`\n\n"
+    
+    message += "For Volatility Breakout:\n"
+    message += "`/setparam volatility_breakout atr_window VALUE`\n"
+    message += "`/setparam volatility_breakout atr_multiplier VALUE`\n"
+    message += "`/setparam volatility_breakout breakout_window VALUE`\n"
     
     await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
 
@@ -355,34 +542,53 @@ async def set_param(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     param_value_str = context.args[2]
     
     # Validate signal type
-    valid_signal_types = ["mean_reversion"]  # Add more as they become available
+    valid_signal_types = ["mean_reversion", "ma_crossover", "volatility_breakout"]
     if signal_type not in valid_signal_types:
         await update.message.reply_text(
             f"Invalid signal type: {signal_type}. Valid types are: {', '.join(valid_signal_types)}"
         )
         return
     
-    # Validate parameter name for mean_reversion
-    if signal_type == "mean_reversion":
-        valid_params = ["window", "threshold"]
-        if param_name not in valid_params:
-            await update.message.reply_text(
-                f"Invalid parameter for mean_reversion: {param_name}. Valid parameters are: {', '.join(valid_params)}"
-            )
-            return
+    # Validate parameter name for each signal type
+    valid_params = {
+        "mean_reversion": ["window", "threshold"],
+        "ma_crossover": ["short_window", "long_window"],
+        "volatility_breakout": ["atr_window", "atr_multiplier", "breakout_window"]
+    }
+    
+    if param_name not in valid_params.get(signal_type, []):
+        await update.message.reply_text(
+            f"Invalid parameter for {signal_type}: {param_name}. "
+            f"Valid parameters are: {', '.join(valid_params.get(signal_type, []))}"
+        )
+        return
     
     # Convert and validate parameter value
     try:
-        if param_name == "window":
-            # Window should be an integer > 0
+        if param_name in ["window", "short_window", "long_window", "atr_window", "breakout_window"]:
+            # These parameters should be integers > 0
             param_value = int(param_value_str)
             if param_value <= 0:
-                raise ValueError("Window must be greater than 0")
-        elif param_name == "threshold":
-            # Threshold should be a float > 0
+                raise ValueError(f"{param_name} must be greater than 0")
+            
+            # Additional validation for short_window < long_window
+            if param_name == "short_window" and signal_type == "ma_crossover":
+                ma_params = user_prefs.get_signal_params(user_id, "ma_crossover")
+                long_window = ma_params.get("long_window", 50)
+                if param_value >= long_window:
+                    raise ValueError(f"short_window must be less than long_window ({long_window})")
+            
+            if param_name == "long_window" and signal_type == "ma_crossover":
+                ma_params = user_prefs.get_signal_params(user_id, "ma_crossover")
+                short_window = ma_params.get("short_window", 20)
+                if param_value <= short_window:
+                    raise ValueError(f"long_window must be greater than short_window ({short_window})")
+                
+        elif param_name in ["threshold", "atr_multiplier"]:
+            # These parameters should be floats > 0
             param_value = float(param_value_str)
             if param_value <= 0:
-                raise ValueError("Threshold must be greater than 0")
+                raise ValueError(f"{param_name} must be greater than 0")
         else:
             param_value = param_value_str
     except ValueError as e:
@@ -402,6 +608,7 @@ async def set_param(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         await update.message.reply_text("Failed to update parameter. Please try again.")
 
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a help message when the command /help is issued"""
     help_text = (
@@ -413,12 +620,36 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/list - List all stocks you're tracking\n"
         "/signals - Show current signals for your tracked stocks\n"
         "/time HH:MM - Set your daily notification time (UTC)\n"
-        "/settings - Manage your signal preferences\n"
+        "/settings - Manage your signal preferences (Mean Reversion, MA Crossover, Volatility Breakout)\n"
         "/params - View your signal parameter settings\n"
-        "/setparam TYPE NAME VALUE - Set a signal parameter (e.g., /setparam mean_reversion window 30)"
+        "/setparam TYPE NAME VALUE - Set a signal parameter\n\n"
+        "Signal types:\n"
+        "- mean_reversion: Bollinger Band based mean reversion signals\n"
+        "- ma_crossover: Moving Average crossover momentum signals\n"
+        "- volatility_breakout: Volatility-based breakout signals"
     )
     
     await update.message.reply_text(help_text)
+
+
+async def metrics_explanation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send an explanation of all test metrics and abbreviations."""
+    explanation = (
+        "*Metrics Explained* 📊\n\n"
+        "- *Win Rate*: Percentage of signals that resulted in a profit.\n"
+        "- *Avg Return*: Average percentage return per signal.\n"
+        "- *Buy & Hold (BH) Return*: The return from simply holding the asset over the same period.\n"
+        "- *Strategy Return*: Total return from following the strategy signals.\n"
+        "- *Outperformance*: How much better the strategy performed compared to buy & hold.\n"
+        "- *Max Drawdown*: Largest peak-to-trough decline during the period.\n"
+        "- *Signal Count*: Number of signals generated (buy/sell).\n"
+        "- *Period*: Time span covered by the backtest.\n\n"
+        "_BH = Buy & Hold_\n"
+    )
+    await update.message.reply_text(explanation, parse_mode=ParseMode.MARKDOWN)
+
+
+
 
 async def nyse_close_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Set notification time to 30 minutes after NYSE close"""
