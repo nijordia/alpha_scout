@@ -107,8 +107,6 @@ Pull requests and issues are welcome! Please open an issue to discuss major chan
 
 Wanna join the development base? DM me on instagram at @aquilare or email at nicolasjordi.aguilar@gmail.com
 
----
-
 *Happy trading!*
 ...
 
