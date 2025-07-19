@@ -1,72 +1,112 @@
 # Market Signals Telegram Bot
 
-This project is a Telegram bot that notifies users about market signals, including mean reverting and momentum signals. It is designed to fetch market data, process signals, and send notifications to users through Telegram.
+![Market Signals Bot Logo](assets/logo.png)
 
-## Project Structure
+## 🚀 Overview
 
-```
-market-signals-telegram-bot
-├── src
-│   ├── main.py                  # Entry point of the application
-│   ├── bot                      # Contains bot-related functionality
-│   │   ├── __init__.py
-│   │   ├── handlers.py          # Message handlers for the Telegram bot
-│   │   ├── telegram_bot.py      # Manages the Telegram bot instance
-│   │   └── notification_manager.py # Logic for sending notifications
-│   ├── market_signals           # Contains market signal detection logic
-│   │   ├── __init__.py
-│   │   ├── mean_reversion.py     # Detects mean reverting signals
-│   │   ├── momentum.py           # Detects momentum signals
-│   │   └── signal_processor.py    # Processes generated signals
-│   ├── data                     # Handles data fetching and processing
-│   │   ├── __init__.py
-│   │   ├── fetcher.py           # Fetches market data
-│   │   └── data_processor.py     # Processes fetched data
-│   └── backtesting              # Implements backtesting functionality
-│       ├── __init__.py
-│       ├── backtest_engine.py    # Backtesting engine for trading strategies
-│       └── performance_metrics.py  # Calculates performance metrics
-├── tests                        # Contains unit tests for the project
-│   ├── __init__.py
-│   ├── test_bot.py              # Unit tests for bot functionality
-│   ├── test_market_signals.py    # Unit tests for market signals
-│   ├── test_data.py             # Unit tests for data handling
-│   └── test_backtesting.py       # Unit tests for backtesting
-├── config                       # Configuration files
-│   └── config.yml               # Configuration settings for the bot
-├── requirements.txt             # Project dependencies
-├── .gitignore                   # Files to ignore in version control
-└── README.md                    # Project documentation
+**Market Signals Telegram Bot** delivers actionable stock signals, strategy insights, and daily market alerts right to your Telegram. Compare strategies against buy & hold, track your favorite tickers, and get your edge—delivered.
+
+Currently testing with a small user base.
+
+---
+
+## ✨ Features
+
+- **Smart Signal Detection:** Mean Reversion, MA Crossover, Volatility Breakout
+- **Performance Metrics:** Win Rate, Avg Return, vs Buy & Hold (BH), Max Drawdown
+- **Customizable Alerts:** Set notification time, choose strategies, track any stock
+- **Interactive Telegram Commands:** Add/remove stocks, view signals, tweak parameters
+- **Secure:** API keys and secrets loaded from `.env` (never committed!)
+
+---
+
+## 🛠️ Getting Started
+
+### 1. Clone the Repo
+
+```sh
+git clone https://github.com/nijordia/market-signals-telegram-bot.git
+cd market-signals-telegram-bot
 ```
 
-## Installation
+### 2. Install Dependencies
 
-1. Clone the repository:
-   ```
-   git clone <repository-url>
-   cd market-signals-telegram-bot
-   ```
-
-2. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-3. Configure the bot by editing the `config/config.yml` file with your API keys and other settings.
-
-## Usage
-
-To run the bot, execute the following command:
-```
-python src/main.py
+```sh
+pip install -r requirements.txt
 ```
 
-The bot will start and listen for market signals, sending notifications to users as configured.
+### 3. Add Your Secrets
 
-## Contributing
+Create a `.env` file in the project root:
 
-Contributions are welcome! Please open an issue or submit a pull request for any enhancements or bug fixes.
+```
+TELEGRAM_API_KEY=your-telegram-bot-api-key
+TELEGRAM_CHAT_ID=your-telegram-chat-id
+```
 
-## License
+> **Note:** `.env` is already in `.gitignore` for your safety.
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+### 4. Run the Bot
+
+```sh
+python main.py
+```
+
+Or, for daily notifications:
+
+```sh
+python main.py --daily-run
+```
+
+---
+
+## 📱 Telegram Commands
+
+- `/start` – Welcome & setup
+- `/add SYMBOL` – Track a stock (e.g., `/add AAPL`)
+- `/remove SYMBOL` – Untrack a stock
+- `/list` – Show tracked stocks
+- `/signals` – Get current signals & metrics
+- `/settings` – Choose strategies
+- `/params` – View/edit signal parameters
+- `/metrics` – Explanation of all metrics
+
+---
+
+## 📊 Metrics Explained
+
+- **Win Rate:** % of signals that were profitable
+- **Avg Return:** Average % return per signal
+- **vs BH:** Outperformance vs Buy & Hold strategy
+- **Max Drawdown:** Largest drop from peak
+- **Signal Count:** Number of signals generated
+- **Period:** Timeframe analyzed
+
+---
+
+## 🔒 Security
+
+- **Never commit your `.env` file or API keys.**
+- All secrets are loaded securely from environment variables.
+
+---
+
+## 📝 License
+
+This project is licensed under the [MIT License](LICENSE).
+
+---
+
+## 🤝 Contributing
+
+Pull requests and issues are welcome! Please open an issue to discuss major changes.
+
+---
+
+## 📬 Contact
+
+Wanna join the development base? DM me on instagram at @aquilare or email at nicolasjordi.aguilar@gmail.com
+
+---
+
+*Happy trading!*
