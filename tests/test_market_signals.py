@@ -1,4 +1,5 @@
 # For running this test use: python -m unittest tests.test_market_signals
+# For signal_reliability use: python -m unittest tests.test_market_signals.TestMarketSignals.test_strategy_validation
 import unittest
 import pandas as pd
 import yaml
@@ -206,8 +207,8 @@ class TestMarketSignals(unittest.TestCase):
         # Generate signals
         signals_data = self.mean_reversion.detect_signals()
         
-        # Run backtest
-        backtest_results = self._run_backtest(signals_data)
+        # Run backtest with strategy type
+        backtest_results = self._run_backtest(signals_data, strategy_type='mean_reversion')
         
         # Calculate buy & hold performance
         initial_capital = 10000
@@ -250,7 +251,7 @@ class TestMarketSignals(unittest.TestCase):
         
         # Test MA Crossover
         ma_signals = self.ma_crossover.detect_signals()
-        ma_results = self._run_backtest(ma_signals)
+        ma_results = self._run_backtest(ma_signals, strategy_type='ma_crossover')
         
         # Calculate buy & hold for MA Crossover
         first_price = ma_signals['close'].iloc[0]
@@ -281,7 +282,7 @@ class TestMarketSignals(unittest.TestCase):
         # Test Volatility Breakout if data is available
         try:
             vb_signals = self.volatility_breakout.detect_signals()
-            vb_results = self._run_backtest(vb_signals)
+            vb_results = self._run_backtest(vb_signals, strategy_type='volatility_breakout')
             
             # Calculate buy & hold for Volatility Breakout
             first_price = vb_signals['close'].iloc[0]
@@ -315,6 +316,9 @@ class TestMarketSignals(unittest.TestCase):
             print(f"Error: {str(e)}")
             print(f"{'=' * 50}")
 
+
+
+ 
     def _visualize_backtest_comparison(self, backtest_results, signals_data, initial_capital, 
                                        save_name='mean_reversion_vs_baseline.png', strategy_name='Mean Reversion'):
         """
@@ -385,14 +389,15 @@ class TestMarketSignals(unittest.TestCase):
         except Exception as e:
             print(f"Visualization error: {str(e)}")
 
-    def _run_backtest(self, signals_df, initial_capital=10000):
+    def _run_backtest(self, signals_df, initial_capital=10000, strategy_type='mean_reversion'):
         """
         Enhanced backtest helper method with position sizing and risk management
         
         Args:
             signals_df: DataFrame with signal column
             initial_capital: Starting capital amount
-            
+            strategy_type: Type of strategy being tested ('mean_reversion', 'ma_crossover', 'volatility_breakout')
+                
         Returns:
             DataFrame with backtest results
         """
@@ -438,23 +443,45 @@ class TestMarketSignals(unittest.TestCase):
             if signal == 'buy':
                 consecutive_buys += 1
                 consecutive_sells = 0
-                # Signal strength increases with consecutive buys (capped at 1.0)
-                df.loc[df.index[i], 'signal_strength'] = min(1.0, consecutive_buys * 0.25)
+                
+                # For mean reversion, use gradual signal strength
+                if strategy_type == 'mean_reversion':
+                    # Signal strength increases with consecutive buys (capped at 1.0)
+                    df.loc[df.index[i], 'signal_strength'] = min(1.0, consecutive_buys * 0.25)
+                else:
+                    # For momentum strategies, use binary signal strength
+                    df.loc[df.index[i], 'signal_strength'] = 1.0
+                    
             elif signal == 'sell':
                 consecutive_buys = 0
                 consecutive_sells += 1
-                # Signal strength increases with consecutive sells (capped at 1.0)
-                df.loc[df.index[i], 'signal_strength'] = min(1.0, consecutive_sells * 0.25)
-            else:
-                # Hold signals decrease strength
-                df.loc[df.index[i], 'signal_strength'] = max(0.0, df.loc[df.index[i-1], 'signal_strength'] - 0.1)
                 
+                # For mean reversion, use gradual signal strength
+                if strategy_type == 'mean_reversion':
+                    # Signal strength increases with consecutive sells (capped at 1.0)
+                    df.loc[df.index[i], 'signal_strength'] = min(1.0, consecutive_sells * 0.25)
+                else:
+                    # For momentum strategies, use binary signal strength
+                    df.loc[df.index[i], 'signal_strength'] = 1.0
+            else:
+                # Hold signals decrease strength only for mean reversion
+                if strategy_type == 'mean_reversion':
+                    df.loc[df.index[i], 'signal_strength'] = max(0.0, df.loc[df.index[i-1], 'signal_strength'] - 0.1)
+                else:
+                    df.loc[df.index[i], 'signal_strength'] = 0.0
+                    
             # Execute trading logic with position sizing
             if signal == 'buy':
                 # Scale the target position based on signal strength and available cash
                 max_position_pct = df.loc[df.index[i], 'max_position_pct']
-                # Lucky number seven
-                target_position_pct = position_pct + (0.7 * df.loc[df.index[i], 'signal_strength'])
+                
+                if strategy_type == 'mean_reversion':
+                    # For mean reversion, scale gradually with signal strength
+                    target_position_pct = position_pct + (0.7 * df.loc[df.index[i], 'signal_strength'])
+                else:
+                    # For momentum strategies, use full position sizing immediately
+                    target_position_pct = max_position_pct
+                    
                 target_position_pct = min(target_position_pct, max_position_pct)
                 
                 # Calculate position delta (how much to add)
@@ -483,13 +510,23 @@ class TestMarketSignals(unittest.TestCase):
                             # Recalculate position percentage
                             new_shares_value = df.loc[df.index[i], 'shares'] * price
                             new_portfolio_value = df.loc[df.index[i], 'cash'] + new_shares_value
-                            df.loc[df.index[i], 'position_pct'] = new_shares_value / new_portfolio_value
+                            
+                            if new_portfolio_value > 0:
+                                df.loc[df.index[i], 'position_pct'] = new_shares_value / new_portfolio_value
+                            else:
+                                df.loc[df.index[i], 'position_pct'] = 0.0
+                                
                             df.loc[df.index[i], 'portfolio_value'] = new_portfolio_value
                 
             elif signal == 'sell':
                 # Scale the position reduction based on signal strength
-                target_position_pct = position_pct * (1 - (0.5 * df.loc[df.index[i], 'signal_strength']))
-                
+                if strategy_type == 'mean_reversion':
+                    # For mean reversion, scale gradually with signal strength
+                    target_position_pct = position_pct * (1 - (0.5 * df.loc[df.index[i], 'signal_strength']))
+                else:
+                    # For momentum strategies, exit completely
+                    target_position_pct = 0.0
+                    
                 # Calculate position delta (how much to reduce)
                 position_delta_pct = position_pct - target_position_pct
                 
@@ -533,6 +570,264 @@ class TestMarketSignals(unittest.TestCase):
                 df.loc[df.index[i], 'position_pct'] = 0.0
         
         return df
+
+    def test_strategy_validation(self):
+        """Test and validate all strategies across multiple tickers, saving results to CSV"""
+        from src.data.fetcher import fetch_stock_data
+        from datetime import datetime, timedelta
+        import pandas as pd
+        import os
+        
+        print("\n" + "=" * 50)
+        print("STRATEGY VALIDATION TEST")
+        print("=" * 50)
+        
+        # List of tickers to test (from your bot)
+        tickers = ['SBLK', 'BTC-USD', 'NKE', 'SPY', 'KO', 'CRV-USD']
+        
+        # Strategy types and parameters to validate
+        strategies = [
+            {
+                'name': 'Mean Reversion',
+                'type': 'mean_reversion',
+                'class': MeanReversionSignal,
+                'params': self.config.get('mean_reversion', {})  # Use config values
+            },
+            {
+                'name': 'MA Crossover',
+                'type': 'ma_crossover', 
+                'class': MACrossoverSignal,
+                'params': self.config.get('momentum', {})  # Use config values
+            },
+            {
+                'name': 'Volatility Breakout',
+                'type': 'volatility_breakout',
+                'class': VolatilityBreakoutSignal,
+                'params': self.config.get('volatility', {})  # Use config values
+            }
+        ]
+        
+        # Prepare results dataframe
+        results = []
+        
+        # End date for backtest (today)
+        end_date = datetime.today()
+        # Start date (1 year ago for better sample size)
+        start_date = end_date - timedelta(days=365)
+        
+        # Test each ticker with each strategy
+        for ticker in tickers:
+            print(f"\nTesting {ticker}...")
+            
+            try:
+                # Fetch historical data for this ticker
+                data = fetch_stock_data(
+                    ticker, 
+                    start_date=start_date.strftime('%Y-%m-%d'),
+                    end_date=end_date.strftime('%Y-%m-%d')
+                )
+                
+                if data is None or len(data) < 50:
+                    print(f"  ⚠️ Insufficient data for {ticker}")
+                    for strategy in strategies:
+                        results.append({
+                            'ticker': ticker,
+                            'strategy': strategy['name'],
+                            'signal': 'INSUFFICIENT DATA',
+                            'start_date': start_date.strftime('%Y-%m-%d'),
+                            'end_date': end_date.strftime('%Y-%m-%d'),
+                            'data_points': 0,
+                            'buy_signals': 0,
+                            'sell_signals': 0,
+                            'hold_signals': 0,
+                            'backtest_return': None,
+                            'buy_hold_return': None,
+                            'outperformance': None
+                        })
+                    continue
+                    
+                # Calculate buy & hold baseline performance
+                initial_capital = 10000
+                first_price = data['close'].iloc[0]
+                last_price = data['close'].iloc[-1]
+                buy_hold_return_pct = ((last_price / first_price) - 1) * 100
+                
+                # Test each strategy on this ticker
+                for strategy in strategies:
+                    strategy_name = strategy['name']
+                    strategy_type = strategy['type']
+                    strategy_class = strategy['class']
+                    
+                    print(f"  Testing {strategy_name}...")
+                    
+                    try:
+                        # Initialize strategy with data
+                        strategy_instance = strategy_class(data, config=self.config)
+                        
+                        # Get signals
+                        signals_data = strategy_instance.detect_signals()
+                        
+                        # Count signal types
+                        buy_count = (signals_data['signal'] == 'buy').sum()
+                        sell_count = (signals_data['signal'] == 'sell').sum()
+                        hold_count = (signals_data['signal'] == 'hold').sum()
+                        
+                        # Get latest signal
+                        latest_signal = signals_data['signal'].iloc[-1] if not signals_data.empty else 'UNKNOWN'
+                        
+                        # Run backtest
+                        backtest_results = self._run_backtest(signals_data, strategy_type=strategy['type'])
+                        
+                        # Calculate backtest performance
+                        if not backtest_results.empty:
+                            # Calculate final portfolio values
+                            strategy_final = backtest_results['portfolio_value'].iloc[-1]
+                            strategy_return_pct = ((strategy_final / initial_capital) - 1) * 100
+                            outperformance = strategy_return_pct - buy_hold_return_pct
+                        else:
+                            strategy_return_pct = 0
+                            outperformance = -buy_hold_return_pct
+                        
+                        # Calculate win rate based on signals that resulted in profitable moves
+                        signal_performance = []
+                        for i in range(1, len(signals_data)):
+                            if signals_data['signal'].iloc[i-1] == 'buy':
+                                # For buy signals, measure forward returns
+                                entry_price = signals_data['close'].iloc[i-1]
+                                exit_price = signals_data['close'].iloc[i]
+                                pct_change = (exit_price / entry_price - 1) * 100
+                                signal_performance.append({
+                                    'signal': 'buy',
+                                    'return': pct_change,
+                                    'profitable': pct_change > 0
+                                })
+                            elif signals_data['signal'].iloc[i-1] == 'sell':
+                                # For sell signals, measure inverse of forward returns
+                                entry_price = signals_data['close'].iloc[i-1]
+                                exit_price = signals_data['close'].iloc[i]
+                                pct_change = (entry_price / exit_price - 1) * 100
+                                signal_performance.append({
+                                    'signal': 'sell',
+                                    'return': pct_change,
+                                    'profitable': pct_change > 0
+                                })
+                        
+                        # Calculate signal performance metrics
+                        signal_df = pd.DataFrame(signal_performance) if signal_performance else pd.DataFrame()
+                        if not signal_df.empty and len(signal_df) > 0:
+                            win_rate = (signal_df['profitable'].sum() / len(signal_df)) * 100
+                            avg_return = signal_df['return'].mean()
+                        else:
+                            win_rate = None
+                            avg_return = None
+                        
+                        # Add results to list
+                        results.append({
+                            'ticker': ticker,
+                            'strategy': strategy_name,
+                            'latest_signal': latest_signal.upper(),
+                            'data_points': len(signals_data),
+                            'buy_signals': buy_count,
+                            'sell_signals': sell_count,
+                            'hold_signals': hold_count,
+                            'win_rate': win_rate,
+                            'avg_signal_return': avg_return,
+                            'backtest_return': strategy_return_pct,
+                            'buy_hold_return': buy_hold_return_pct,
+                            'outperformance': outperformance,
+                            'start_date': start_date.strftime('%Y-%m-%d'),
+                            'end_date': end_date.strftime('%Y-%m-%d')
+                        })
+                        
+                        # Save individual backtest results
+                        backtest_output_path = os.path.join(
+                            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            f'backtest_{ticker}_{strategy_type}.csv'
+                        )
+                        if not backtest_results.empty:
+                            backtest_results.to_csv(backtest_output_path, index=False)
+                        
+                    except ValueError as e:
+                        print(f"    ⚠️ Strategy error: {e}")
+                        results.append({
+                            'ticker': ticker,
+                            'strategy': strategy_name,
+                            'latest_signal': 'ERROR',
+                            'data_points': len(data) if data is not None else 0,
+                            'buy_signals': 0,
+                            'sell_signals': 0,
+                            'hold_signals': 0,
+                            'win_rate': None,
+                            'avg_signal_return': None,
+                            'backtest_return': None,
+                            'buy_hold_return': buy_hold_return_pct,
+                            'outperformance': None,
+                            'start_date': start_date.strftime('%Y-%m-%d'),
+                            'end_date': end_date.strftime('%Y-%m-%d')
+                        })
+                    except Exception as e:
+                        print(f"    ❌ Unexpected error: {e}")
+                        import traceback
+                        traceback.print_exc()
+            
+            except Exception as e:
+                print(f"  ❌ Error testing {ticker}: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Convert results to DataFrame 
+        results_df = pd.DataFrame(results)
+        
+        # Format the DataFrame for better readability
+        for col in ['win_rate', 'avg_signal_return', 'backtest_return', 'buy_hold_return', 'outperformance']:
+            if col in results_df.columns:
+                results_df[col] = results_df[col].apply(
+                    lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A"
+                )
+        
+        # Save results
+        csv_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'strategy_validation_results.csv'
+        )
+        results_df.to_csv(csv_path, index=False)
+        print(f"\nStrategy validation results saved to: {csv_path}")
+        
+        # Print summary by strategy
+        print("\nSTRATEGY VALIDATION SUMMARY:")
+        print("-" * 30)
+        
+        for strategy_name in [s['name'] for s in strategies]:
+            strategy_results = results_df[results_df['strategy'] == strategy_name]
+            outperformance_values = []
+            
+            for idx, row in strategy_results.iterrows():
+                try:
+                    if row['outperformance'] != "N/A":
+                        value = float(row['outperformance'].strip('%'))
+                        outperformance_values.append(value)
+                except:
+                    pass
+            
+            if outperformance_values:
+                avg_outperformance = sum(outperformance_values) / len(outperformance_values)
+                win_count = sum(1 for val in outperformance_values if val > 0)
+                win_pct = (win_count / len(outperformance_values)) * 100 if outperformance_values else 0
+            else:
+                avg_outperformance = 0
+                win_count = 0
+                win_pct = 0
+            
+            print(f"{strategy_name}:")
+            print(f"  Avg outperformance: {avg_outperformance:.2f}%")
+            print(f"  Beat buy & hold: {win_count}/{len(outperformance_values)} tickers ({win_pct:.1f}%)")
+        
+        print("=" * 50)
+
+
+
+
+
 
 
 if __name__ == '__main__':

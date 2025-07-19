@@ -26,7 +26,7 @@ def calculate_sharpe_ratio(returns, risk_free_rate=0.0):
 
 def calculate_win_rate(signals_df, holding_period=14, target_return=None):
     """
-    Calculate win rate for signals.
+    Calculate win rate for signals, correctly handling buy/sell signals.
     
     Args:
         signals_df: DataFrame with signal dates and prices
@@ -42,6 +42,10 @@ def calculate_win_rate(signals_df, holding_period=14, target_return=None):
     for idx, row in signals_df.iterrows():
         if idx + holding_period >= len(signals_df):
             continue
+        
+        # Skip 'hold' signals for win rate calculation
+        if 'signal' in row and row['signal'] == 'hold':
+            continue
             
         entry_price = row['close']
         exit_price = signals_df.iloc[idx + holding_period]['close']
@@ -49,11 +53,22 @@ def calculate_win_rate(signals_df, holding_period=14, target_return=None):
         # Calculate return
         signal_return = (exit_price - entry_price) / entry_price * 100
         
-        # Determine if win based on target or positive return
-        if target_return is not None:
-            if signal_return >= target_return:
-                wins += 1
-        elif signal_return > 0:
+        # Determine if win based on signal type (buy/sell)
+        signal_type = row.get('signal', 'buy')  # Default to buy if not specified
+        
+        if signal_type == 'buy':
+            # For buy signals, positive return is a win
+            is_win = (target_return is not None and signal_return >= target_return) or \
+                    (target_return is None and signal_return > 0)
+        elif signal_type == 'sell':
+            # For sell signals, negative return is a win (price dropped as expected)
+            is_win = (target_return is not None and signal_return <= -target_return) or \
+                    (target_return is None and signal_return < 0)
+        else:
+            # Hold or unknown signals don't count as wins or losses
+            continue
+        
+        if is_win:
             wins += 1
             
         total += 1
@@ -65,7 +80,7 @@ def calculate_win_rate(signals_df, holding_period=14, target_return=None):
 
 def calculate_average_return_per_signal(signals_df, holding_period=14):
     """
-    Calculate average return per signal.
+    Calculate average return per signal, with correct handling of buy/sell signals.
     
     Args:
         signals_df: DataFrame with signal dates and prices
@@ -79,18 +94,38 @@ def calculate_average_return_per_signal(signals_df, holding_period=14):
     for idx, row in signals_df.iterrows():
         if idx + holding_period >= len(signals_df):
             continue
+        
+        # Skip 'hold' signals for return calculation
+        if 'signal' in row and row['signal'] == 'hold':
+            continue
             
         entry_price = row['close']
         exit_price = signals_df.iloc[idx + holding_period]['close']
         
-        # Calculate return
-        signal_return = (exit_price - entry_price) / entry_price * 100
+        # Calculate raw return
+        price_change_pct = (exit_price - entry_price) / entry_price * 100
+        
+        # Adjust return interpretation based on signal type
+        signal_type = row.get('signal', 'buy')  # Default to buy if not specified
+        
+        if signal_type == 'buy':
+            # For buy signals, positive price change is positive return
+            signal_return = price_change_pct
+        elif signal_type == 'sell':
+            # For sell signals, negative price change is positive return
+            # We flip the sign to reflect this
+            signal_return = -price_change_pct
+        else:
+            # Skip hold signals
+            continue
+            
         returns.append(signal_return)
     
     if not returns:
         return 0
         
     return sum(returns) / len(returns)
+
 
 def calculate_outperformance(signals_df, benchmark_df, holding_period=14):
     """
