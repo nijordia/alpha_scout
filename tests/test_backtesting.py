@@ -1,5 +1,5 @@
 import unittest
-from src.backtesting.backtest_engine import BacktestEngine
+from backtesting.strategy_evaluator import BacktestEngine
 from src.backtesting.performance_metrics import PerformanceMetrics
 
 class TestBacktestEngine(unittest.TestCase):

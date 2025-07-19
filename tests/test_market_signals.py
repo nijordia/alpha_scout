@@ -171,6 +171,36 @@ class TestMarketSignals(unittest.TestCase):
             self.assertIn('mean_reversion', processed_data_signals)
             self.assertIn('combined', processed_data_signals)
 
+    def _print_strategy_performance(self, strategy_name, strategy_final, buy_hold_final, 
+                                initial_capital, strategy_data=None):
+        """
+        Print a simplified performance comparison between strategy and buy & hold
+        
+        Args:
+            strategy_name: Name of the strategy
+            strategy_final: Final portfolio value using strategy
+            buy_hold_final: Final portfolio value using buy & hold
+            initial_capital: Starting capital amount
+            strategy_data: Additional performance metrics dictionary (optional)
+        """
+        strategy_return_pct = ((strategy_final / initial_capital) - 1) * 100
+        buy_hold_return_pct = ((buy_hold_final / initial_capital) - 1) * 100
+        outperformance = strategy_return_pct - buy_hold_return_pct
+        
+        print(f"\n{'=' * 50}")
+        print(f"{strategy_name} Strategy Performance")
+        print(f"{'=' * 50}")
+        print(f"Initial capital: ${initial_capital:.2f}")
+        print(f"Strategy: ${strategy_final:.2f} ({strategy_return_pct:.2f}%)")
+        print(f"Buy & Hold: ${buy_hold_final:.2f} ({buy_hold_return_pct:.2f}%)")
+        print(f"Outperformance: {outperformance:.2f}% ({'BEAT MARKET' if outperformance > 0 else 'UNDERPERFORMED'})")
+        
+        if strategy_data:
+            print(f"\nAdditional Metrics:")
+            for key, value in strategy_data.items():
+                print(f"  {key}: {value}")
+        print(f"{'=' * 50}")
+
     def test_backtest_mean_reversion(self):
         """Test backtesting of mean reversion strategy"""
         # Generate signals
@@ -190,24 +220,12 @@ class TestMarketSignals(unittest.TestCase):
             lambda price: (shares_bought * price) + remaining_cash
         )
         
-        # Calculate final values and returns
+        # Calculate final values
         strategy_final = backtest_results['portfolio_value'].iloc[-1]
         buy_hold_final = buy_hold_equity.iloc[-1]
         
-        strategy_return_pct = ((strategy_final / initial_capital) - 1) * 100
-        buy_hold_return_pct = ((buy_hold_final / initial_capital) - 1) * 100
-        outperformance = strategy_return_pct - buy_hold_return_pct
-        
         # Print comparison results
-        print("\nMean Reversion Backtest Results:")
-        print(f"Initial capital: ${initial_capital:.2f}")
-        print(f"Final capital (strategy): ${strategy_final:.2f}")
-        print(f"Total return (strategy): {strategy_return_pct:.2f}%")
-        print("\nBuy & Hold Baseline:")
-        print(f"Final capital (buy & hold): ${buy_hold_final:.2f}")
-        print(f"Total return (buy & hold): {buy_hold_return_pct:.2f}%")
-        print("\nComparison:")
-        print(f"Strategy outperformance: {outperformance:.2f}%")
+        self._print_strategy_performance("Mean Reversion", strategy_final, buy_hold_final, initial_capital)
         
         # Add buy & hold data to results for CSV export
         backtest_results['buy_hold_value'] = buy_hold_equity.values
@@ -224,9 +242,8 @@ class TestMarketSignals(unittest.TestCase):
         print(f"Detailed results saved to {output_path}")
         
         # Visualize the results
-        print("Visualizing performance comparison...")
         self._visualize_backtest_comparison(backtest_results, signals_data, initial_capital)
-    
+
     def test_backtest_momentum(self):
         """Test backtesting of momentum strategies"""
         initial_capital = 10000
@@ -247,20 +264,8 @@ class TestMarketSignals(unittest.TestCase):
         ma_strategy_final = ma_results['portfolio_value'].iloc[-1]
         ma_buy_hold_final = ma_buy_hold.iloc[-1]
         
-        ma_strategy_return_pct = ((ma_strategy_final / initial_capital) - 1) * 100
-        ma_buy_hold_return_pct = ((ma_buy_hold_final / initial_capital) - 1) * 100
-        ma_outperformance = ma_strategy_return_pct - ma_buy_hold_return_pct
-        
         # Print MA Crossover comparison
-        print("\nMA Crossover Backtest Results:")
-        print(f"Initial capital: ${initial_capital:.2f}")
-        print(f"Final capital (strategy): ${ma_strategy_final:.2f}")
-        print(f"Total return (strategy): {ma_strategy_return_pct:.2f}%")
-        print("\nBuy & Hold Baseline:")
-        print(f"Final capital (buy & hold): ${ma_buy_hold_final:.2f}")
-        print(f"Total return (buy & hold): {ma_buy_hold_return_pct:.2f}%")
-        print("\nComparison:")
-        print(f"Strategy outperformance: {ma_outperformance:.2f}%")
+        self._print_strategy_performance("MA Crossover", ma_strategy_final, ma_buy_hold_final, initial_capital)
         
         # Add buy & hold to results for CSV
         ma_results['buy_hold_value'] = ma_buy_hold.values
@@ -271,7 +276,6 @@ class TestMarketSignals(unittest.TestCase):
         ma_results.to_csv(ma_output_path, index=False)
         
         # Visualize MA Crossover
-        print("Visualizing performance comparison...")
         self._visualize_backtest_comparison(ma_results, ma_signals, initial_capital, 'ma_crossover_vs_baseline.png', 'MA Crossover')
         
         # Test Volatility Breakout if data is available
@@ -291,20 +295,8 @@ class TestMarketSignals(unittest.TestCase):
             vb_strategy_final = vb_results['portfolio_value'].iloc[-1]
             vb_buy_hold_final = vb_buy_hold.iloc[-1]
             
-            vb_strategy_return_pct = ((vb_strategy_final / initial_capital) - 1) * 100
-            vb_buy_hold_return_pct = ((vb_buy_hold_final / initial_capital) - 1) * 100
-            vb_outperformance = vb_strategy_return_pct - vb_buy_hold_return_pct
-            
             # Print Volatility Breakout comparison
-            print("\nVolatility Breakout Backtest Results:")
-            print(f"Initial capital: ${initial_capital:.2f}")
-            print(f"Final capital (strategy): ${vb_strategy_final:.2f}")
-            print(f"Total return (strategy): {vb_strategy_return_pct:.2f}%")
-            print("\nBuy & Hold Baseline:")
-            print(f"Final capital (buy & hold): ${vb_buy_hold_final:.2f}")
-            print(f"Total return (buy & hold): {vb_buy_hold_return_pct:.2f}%")
-            print("\nComparison:")
-            print(f"Strategy outperformance: {vb_outperformance:.2f}%")
+            self._print_strategy_performance("Volatility Breakout", vb_strategy_final, vb_buy_hold_final, initial_capital)
             
             # Add buy & hold to results for CSV
             vb_results['buy_hold_value'] = vb_buy_hold.values
@@ -315,38 +307,14 @@ class TestMarketSignals(unittest.TestCase):
             vb_results.to_csv(vb_output_path, index=False)
             
             # Visualize Volatility Breakout
-            print("Visualizing performance comparison...")
             self._visualize_backtest_comparison(vb_results, vb_signals, initial_capital, 
                                             'volatility_breakout_vs_baseline.png', 'Volatility Breakout')
         except ValueError as e:
-            print(f"Could not backtest volatility breakout strategy: {str(e)}")
+            print(f"\n{'=' * 50}")
+            print("Volatility Breakout Strategy: FAILED")
+            print(f"Error: {str(e)}")
+            print(f"{'=' * 50}")
 
-
-    def test_backtest_momentum(self):
-        """Test backtesting of momentum strategies"""
-        # Test MA Crossover
-        ma_signals = self.ma_crossover.detect_signals()
-        ma_results = self._run_backtest(ma_signals)
-        ma_output_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            'ma_crossover_backtest_results.csv'
-        )
-        ma_results.to_csv(ma_output_path, index=False)
-        self._visualize_backtest_comparison(ma_results, ma_signals, 10000, 'ma_crossover_vs_baseline.png', 'MA Crossover')
-        
-        # Test Volatility Breakout if data is available
-        try:
-            vb_signals = self.volatility_breakout.detect_signals()
-            vb_results = self._run_backtest(vb_signals)
-            vb_output_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                'volatility_breakout_backtest_results.csv'
-            )
-            vb_results.to_csv(vb_output_path, index=False)
-            self._visualize_backtest_comparison(vb_results, vb_signals, 10000, 'volatility_breakout_vs_baseline.png', 'Volatility Breakout')
-        except ValueError as e:
-            print(f"Could not backtest volatility breakout strategy: {str(e)}")
-        
     def _visualize_backtest_comparison(self, backtest_results, signals_data, initial_capital, 
                                        save_name='mean_reversion_vs_baseline.png', strategy_name='Mean Reversion'):
         """
@@ -565,6 +533,7 @@ class TestMarketSignals(unittest.TestCase):
                 df.loc[df.index[i], 'position_pct'] = 0.0
         
         return df
+
 
 if __name__ == '__main__':
     unittest.main()
