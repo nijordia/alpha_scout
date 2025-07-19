@@ -168,11 +168,12 @@ class SignalReliabilityService:
     def _cache_results(self, ticker: str, strategy_type: str, 
                       strategy_params: Dict[str, Any], results: Dict[str, Any]) -> None:
         """Cache the evaluation results."""
-        cache_file = self._get_cache_file_path(ticker, strategy_type, strategy_params)
+        #cache_file = self._get_cache_file_path(ticker, strategy_type, strategy_params)
         
-        try:
-            with open(cache_file, 'w') as f:
-                json.dump(results, f)
-        except Exception as e:
-            logger.error(f"Error caching results for {ticker} {strategy_type}: {e}")
+        #try:
+            #with open(cache_file, 'w') as f:
+                #json.dump(results, f)
+       # except Exception as e:
+            #logger.error(f"Error caching results for {ticker} {strategy_type}: {e}")
+        pass
     

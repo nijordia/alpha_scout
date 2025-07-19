@@ -2,15 +2,11 @@
   "tracked_stocks": [
     "SBLK",
     "BTC-USD",
-<<<<<<< HEAD
-    "SPY"
-=======
     "NKE",
     "SPY",
     "KO",
     "CRV-USD",
     "NVDA"
->>>>>>> origin/main
   ],
   "signal_types": [
     "mean_reversion",
@@ -19,11 +15,7 @@
   ],
   "notification_time": "08:00",
   "created_at": "2025-07-16T21:53:06.175884",
-<<<<<<< HEAD
-  "last_modified": "2025-07-19T20:12:47.094088",
-=======
   "last_modified": "2025-07-17T16:17:35.060676",
->>>>>>> origin/main
   "signal_params": {
     "mean_reversion": {
       "window": 150,
