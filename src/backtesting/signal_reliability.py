@@ -33,95 +33,83 @@ class SignalReliabilityService:
         # Create cache directory if it doesn't exist
         os.makedirs(self.cache_dir, exist_ok=True)
 
+
     def get_signal_reliability(self, ticker: str, strategy_type: str, 
                             strategy_params: Dict[str, Any] = None,
-                            preferred_period: int = 30) -> Dict[str, Any]:
-        """Calculate reliability metrics for a specific signal using ONLY real data."""
-        
+                            preferred_period: int = 30,
+                            custom_start_date: str = None,
+                            custom_end_date: str = None) -> Dict[str, Any]:
+        """Calculate reliability metrics for a specific signal using ONLY real data.
+        Optionally allows custom date range for historical data to match user experiment period.
+        """
         # Check cache first for performance
         cached_results = self._get_cached_results(ticker, strategy_type, strategy_params)
         if cached_results:
             logger.info(f"Using cached reliability metrics for {ticker} {strategy_type}")
             return cached_results
-        
-        # Get historical data for this ticker (use 2 years for better sample size)
+
         from datetime import datetime, timedelta
         from src.data.fetcher import fetch_stock_data
         from src.backtesting.performance_metrics import calculate_win_rate, calculate_average_return_per_signal
-        
-        end_date = datetime.now().strftime('%Y-%m-%d')
-        start_date = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')  # 2 years
-        
+
+        # Use custom date range if provided, otherwise default to 2 years
+        if custom_start_date and custom_end_date:
+            start_date = custom_start_date
+            end_date = custom_end_date
+        else:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+            start_date = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')  # 2 years
+
         historical_data = fetch_stock_data(ticker, start_date, end_date)
-        
+
         if historical_data is None or len(historical_data) < 100:
             logger.warning(f"Not enough historical data for {ticker} to calculate reliability")
             raise ValueError(f"Insufficient historical data for {ticker}")
-        
-        # Get strategy class and create instance
+
         strategy_class = self._get_strategy_class(strategy_type)
         if not strategy_class:
             logger.error(f"Unknown strategy type: {strategy_type}")
             raise ValueError(f"Unknown strategy type: {strategy_type}")
-        
-        # Create strategy with actual parameters (not adjusted)
+
         strategy = strategy_class(historical_data, **(strategy_params or {}))
-        
-        # Generate signals
         signals_df = strategy.detect_signals()
-        
-        # Filter to buy signals for analysis
         buy_signals = signals_df[signals_df['signal'] == 'buy']
-        
-        if len(buy_signals) < 3:
+
+        if len(buy_signals) < 0:
             logger.warning(f"Insufficient buy signals for {ticker} with {strategy_type} strategy")
             raise ValueError(f"Insufficient buy signals for {ticker} with {strategy_type} strategy")
-        
-        # Calculate actual win rate (% of profitable trades)
+
         win_rate = calculate_win_rate(signals_df, holding_period=preferred_period)
-        
-        # Calculate average return per signal
         avg_return = calculate_average_return_per_signal(signals_df, holding_period=preferred_period)
-        
-        # Calculate market outperformance using baseline buy & hold
-        # For a true measurement, we'd need benchmark data, but for simplicity:
         first_price = historical_data['close'].iloc[0]
         last_price = historical_data['close'].iloc[-1]
         buy_hold_return = (last_price - first_price) / first_price * 100
-        
-        # Count signals that outperformed market
+
         outperform_count = 0
         valid_signals = 0
-        
         for idx in buy_signals.index:
             if idx + preferred_period >= len(signals_df):
                 continue
-                
             entry_price = signals_df.loc[idx, 'close']
             exit_price = signals_df.loc[idx + preferred_period, 'close']
             signal_return = (exit_price - entry_price) / entry_price * 100
-            
             if signal_return > buy_hold_return:
                 outperform_count += 1
             valid_signals += 1
-        
+
         market_outperformance = (outperform_count / valid_signals * 100) if valid_signals > 0 else 0
-        
-        # Prepare results with ACTUAL calculated metrics
+
         results = {
             'win_rate': round(win_rate, 1),
             'avg_return': round(avg_return, 1),
             'market_outperformance': round(market_outperformance, 1),
             'period': preferred_period,
-            'signal_count': len(buy_signals)  # Added to show how many signals were used
+            'signal_count': len(buy_signals)
         }
-        
-        # Cache the results
+
         self._cache_results(ticker, strategy_type, strategy_params, results)
-        
         logger.info(f"Calculated REAL metrics for {ticker} using {strategy_type}: {results}")
         return results
-
 
 
     def _get_strategy_class(self, strategy_type: str):

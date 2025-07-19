@@ -213,6 +213,8 @@ class MACrossoverSignal(MomentumSignal):
             plt.savefig(save_path)
         
         return fig
+    
+    
     def get_latest_signal_formatted(self):
         """
         Get the latest signal with formatting information.

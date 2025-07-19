@@ -2,6 +2,7 @@ import re
 import logging
 import os
 import asyncio
+from datetime import datetime, timedelta
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -232,12 +233,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Select the signal types you want to track:", reply_markup=reply_markup)
 
+
 async def get_signals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Get current signals for the user's tracked stocks"""
     user_id = str(update.effective_user.id)
     preferences = user_prefs.get_user_preferences(user_id)
     tracked_stocks = preferences.get("tracked_stocks", [])
     signal_types = preferences.get("signal_types", ["mean_reversion"])
+
+    # Get experiment period from user preferences, fallback to 365 days if not set
+    experiment_period = preferences.get("experiment_period", 365)
 
     if not tracked_stocks:
         await update.message.reply_text(
@@ -246,10 +251,8 @@ async def get_signals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
 
-    # Get signal parameters for display
     signal_params = preferences.get("signal_params", {})
 
-    # Prepare parameter display message
     params_text = ""
     if "mean_reversion" in signal_types:
         mr_params = signal_params.get("mean_reversion", {"window": 50, "threshold": 1.5})
@@ -275,27 +278,49 @@ async def get_signals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text(
         f"Fetching signals for {len(tracked_stocks)} stocks using your parameters:\n"
         f"{params_text}\n"
+        f"Experiment period: {experiment_period} days\n"
         "This may take a moment..."
     )
 
-    # Process signals for each tracked stock
     signals_results = []
 
-    # Import needed signal classes
     from src.market_signals.mean_reversion import MeanReversionSignal
     from src.market_signals.momentum import MACrossoverSignal, VolatilityBreakoutSignal
-
-    # Import reliability service once
     from src.backtesting.signal_reliability import SignalReliabilityService
     reliability_service = SignalReliabilityService()
 
     for stock in tracked_stocks:
         try:
-            # Fetch the latest stock data only once
-            data = await asyncio.to_thread(fetch_stock_data, stock)
+            # Calculate max window needed for each strategy
+            max_window = experiment_period
+            if "ma_crossover" in signal_types:
+                ma_params = preferences.get("signal_params", {}).get("ma_crossover", {})
+                long_window = ma_params.get("long_window", 50)
+                max_window = max(max_window, long_window)
+            if "volatility_breakout" in signal_types:
+                vb_params = preferences.get("signal_params", {}).get("volatility_breakout", {})
+                breakout_window = vb_params.get("breakout_window", 20)
+                atr_window = vb_params.get("atr_window", 14)
+                max_window = max(max_window, breakout_window, atr_window)
+            if "mean_reversion" in signal_types:
+                mr_params = preferences.get("signal_params", {}).get("mean_reversion", {})
+                mr_window = mr_params.get("window", 50)
+                max_window = max(max_window, mr_window)
+
+            # Fetch enough data for all strategies
+            data = await asyncio.to_thread(
+                fetch_stock_data,
+                stock,
+                start_date=(datetime.now() - timedelta(days=experiment_period + max_window)).strftime('%Y-%m-%d'),
+                end_date=datetime.now().strftime('%Y-%m-%d')
+            )
             if data is None or len(data) == 0:
                 signals_results.append(f"❓ {stock}: Could not fetch data")
                 continue
+
+            # Slice to experiment period for analysis
+            if len(data) > experiment_period:
+                data = data.iloc[-experiment_period:]
 
             signals = []
 
@@ -312,39 +337,26 @@ async def get_signals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     mr_params = preferences.get("signal_params", {}).get("mean_reversion", {})
                     window = mr_params.get("window", 50)
                     threshold = mr_params.get("threshold", 1.5)
-
                     mean_rev = MeanReversionSignal(data, window=window, threshold=threshold)
                     signal_info = mean_rev.get_latest_signal_formatted()
-
                     signal_text = f"Mean Reversion: {signal_info['formatted_text']}"
-
-                    try:
-                        reliability = reliability_service.get_signal_reliability(
-                            ticker=stock,
-                            strategy_type='mean_reversion',
-                            strategy_params={'window': window, 'threshold': threshold}
-                        )
-                        # Use the same period as reliability metrics
-                        period = reliability.get('period', 30)
-                        bh_return = calc_bh_return(data, period)
-                        avg_return = reliability.get('avg_return', 0)
-                        if bh_return is not None:
-                            vs_bh = avg_return - bh_return
-                            vs_bh_text = f" | vs BH: {'+' if vs_bh > 0 else ''}{vs_bh:.2f}%"
-                        else:
-                            vs_bh_text = ""
-                        reliability_text = (
-                            f" | Win: {reliability['win_rate']}% | Avg: {'+' if avg_return > 0 else ''}{avg_return}%{vs_bh_text}"
-                        )
-                        signal_text += reliability_text
-
-                    except ValueError as e:
-                        logger.warning(f"Insufficient data for {stock} mean reversion reliability: {e}")
-                        signal_text += " | Metrics: Insufficient historical data"
-                    except Exception as e:
-                        logger.error(f"Error calculating reliability for {stock} mean reversion: {e}")
-                        signal_text += " | Metrics: Calculation error"
-
+                    reliability = reliability_service.get_signal_reliability(
+                        ticker=stock,
+                        strategy_type='mean_reversion',
+                        strategy_params={'window': window, 'threshold': threshold}
+                    )
+                    period = reliability.get('period', experiment_period)
+                    bh_return = calc_bh_return(data, period)
+                    avg_return = reliability.get('avg_return', 0)
+                    if bh_return is not None:
+                        vs_bh = avg_return - bh_return
+                        vs_bh_text = f" | vs BH: {'+' if vs_bh > 0 else ''}{vs_bh:.2f}%"
+                    else:
+                        vs_bh_text = ""
+                    reliability_text = (
+                        f" | Win: {reliability['win_rate']}% | Avg: {'+' if avg_return > 0 else ''}{avg_return}%{vs_bh_text}"
+                    )
+                    signal_text += reliability_text
                     signals.append(signal_text)
                 except Exception as e:
                     logger.error(f"Error processing mean reversion signal for {stock}: {e}")
@@ -354,38 +366,26 @@ async def get_signals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     ma_params = preferences.get("signal_params", {}).get("ma_crossover", {})
                     short_window = ma_params.get("short_window", 20)
                     long_window = ma_params.get("long_window", 50)
-
                     ma_signal = MACrossoverSignal(data, short_window=short_window, long_window=long_window)
                     signal_info = ma_signal.get_latest_signal_formatted()
-
                     signal_text = f"MA Crossover: {signal_info['formatted_text']}"
-
-                    try:
-                        reliability = reliability_service.get_signal_reliability(
-                            ticker=stock,
-                            strategy_type='ma_crossover',
-                            strategy_params={'short_window': short_window, 'long_window': long_window}
-                        )
-                        period = reliability.get('period', 30)
-                        bh_return = calc_bh_return(data, period)
-                        avg_return = reliability.get('avg_return', 0)
-                        if bh_return is not None:
-                            vs_bh = avg_return - bh_return
-                            vs_bh_text = f" | vs BH: {'+' if vs_bh > 0 else ''}{vs_bh:.2f}%"
-                        else:
-                            vs_bh_text = ""
-                        reliability_text = (
-                            f" | Win: {reliability['win_rate']}% | Avg: {'+' if avg_return > 0 else ''}{avg_return}%{vs_bh_text}"
-                        )
-                        signal_text += reliability_text
-
-                    except ValueError as e:
-                        logger.warning(f"Insufficient data for {stock} MA crossover reliability: {e}")
-                        signal_text += " | Metrics: Insufficient historical data"
-                    except Exception as e:
-                        logger.error(f"Error calculating reliability for {stock} MA crossover: {e}")
-                        signal_text += " | Metrics: Calculation error"
-
+                    reliability = reliability_service.get_signal_reliability(
+                        ticker=stock,
+                        strategy_type='ma_crossover',
+                        strategy_params={'short_window': short_window, 'long_window': long_window}
+                    )
+                    period = reliability.get('period', experiment_period)
+                    bh_return = calc_bh_return(data, period)
+                    avg_return = reliability.get('avg_return', 0)
+                    if bh_return is not None:
+                        vs_bh = avg_return - bh_return
+                        vs_bh_text = f" | vs BH: {'+' if vs_bh > 0 else ''}{vs_bh:.2f}%"
+                    else:
+                        vs_bh_text = ""
+                    reliability_text = (
+                        f" | Win: {reliability['win_rate']}% | Avg: {'+' if avg_return > 0 else ''}{avg_return}%{vs_bh_text}"
+                    )
+                    signal_text += reliability_text
                     signals.append(signal_text)
                 except Exception as e:
                     logger.error(f"Error processing MA crossover signal for {stock}: {e}")
@@ -396,7 +396,6 @@ async def get_signals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     atr_window = vb_params.get("atr_window", 14)
                     atr_multiplier = vb_params.get("atr_multiplier", 1.5)
                     breakout_window = vb_params.get("breakout_window", 20)
-
                     vb_signal = VolatilityBreakoutSignal(
                         data,
                         atr_window=atr_window,
@@ -404,44 +403,32 @@ async def get_signals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                         breakout_window=breakout_window
                     )
                     signal_info = vb_signal.get_latest_signal_formatted()
-
                     signal_text = f"Volatility Breakout: {signal_info['formatted_text']}"
-
-                    try:
-                        reliability = reliability_service.get_signal_reliability(
-                            ticker=stock,
-                            strategy_type='volatility_breakout',
-                            strategy_params={
-                                'atr_window': atr_window,
-                                'atr_multiplier': atr_multiplier,
-                                'breakout_window': breakout_window
-                            }
-                        )
-                        period = reliability.get('period', 30)
-                        bh_return = calc_bh_return(data, period)
-                        avg_return = reliability.get('avg_return', 0)
-                        if bh_return is not None:
-                            vs_bh = avg_return - bh_return
-                            vs_bh_text = f" | vs BH: {'+' if vs_bh > 0 else ''}{vs_bh:.2f}%"
-                        else:
-                            vs_bh_text = ""
-                        reliability_text = (
-                            f" | Win: {reliability['win_rate']}% | Avg: {'+' if avg_return > 0 else ''}{avg_return}%{vs_bh_text}"
-                        )
-                        signal_text += reliability_text
-
-                    except ValueError as e:
-                        logger.warning(f"Insufficient data for {stock} volatility breakout reliability: {e}")
-                        signal_text += " | Metrics: Insufficient historical data"
-                    except Exception as e:
-                        logger.error(f"Error calculating reliability for {stock} volatility breakout: {e}")
-                        signal_text += " | Metrics: Calculation error"
-
+                    reliability = reliability_service.get_signal_reliability(
+                        ticker=stock,
+                        strategy_type='volatility_breakout',
+                        strategy_params={
+                            'atr_window': atr_window,
+                            'atr_multiplier': atr_multiplier,
+                            'breakout_window': breakout_window
+                        }
+                    )
+                    period = reliability.get('period', experiment_period)
+                    bh_return = calc_bh_return(data, period)
+                    avg_return = reliability.get('avg_return', 0)
+                    if bh_return is not None:
+                        vs_bh = avg_return - bh_return
+                        vs_bh_text = f" | vs BH: {'+' if vs_bh > 0 else ''}{vs_bh:.2f}%"
+                    else:
+                        vs_bh_text = ""
+                    reliability_text = (
+                        f" | Win: {reliability['win_rate']}% | Avg: {'+' if avg_return > 0 else ''}{avg_return}%{vs_bh_text}"
+                    )
+                    signal_text += reliability_text
                     signals.append(signal_text)
                 except Exception as e:
                     logger.error(f"Error processing volatility breakout signal for {stock}: {e}")
 
-            # Format and add the signals to the results
             if signals:
                 signal_text = "\n  - ".join(signals)
                 signals_results.append(f"{stock}:\n  - {signal_text}")
@@ -452,13 +439,14 @@ async def get_signals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             logger.error(f"Error getting signals for {stock}: {e}")
             signals_results.append(f"❌ {stock}: Error getting signals")
 
-    # Send the results
     if signals_results:
         message = "Current signals for your tracked stocks:\n\n" + "\n\n".join(signals_results)
     else:
         message = "No signals were generated for your tracked stocks."
 
     await update.message.reply_text(message)
+
+
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log errors and send a message to the user"""
