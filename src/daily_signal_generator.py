@@ -83,7 +83,7 @@ async def send_daily_notifications(force=False, test_user=None, ignore_time=Fals
         try:
             # Get user preferences
             preferences = user_prefs.get_user_preferences(user_id)
-            notification_time = preferences.get('notification_time', '20:00')
+            notification_time = preferences.get('notification_time', '20:30')
             
             # Skip if it's not time for this user's notification and not forcing
             if not force and not ignore_time and notification_time != current_time:
@@ -119,7 +119,7 @@ async def send_daily_notifications(force=False, test_user=None, ignore_time=Fals
                             signal_details = {}
                             
                             # For mean reversion, include price and bands information
- # Update the signal detail collection in send_daily_notifications
+                            # Update the signal detail collection in send_daily_notifications
 
                             # Inside the for loop for active signals, when collecting signal details:
                             if signal_type == "mean_reversion":
@@ -138,9 +138,12 @@ async def send_daily_notifications(force=False, test_user=None, ignore_time=Fals
                                         mean_rev = MeanReversionSignal(data, window=window, threshold=threshold)
                                         signal_info = mean_rev.get_latest_signal_formatted()
                                         
-                                        # Extract details
-                                        signal_details = signal_info.get('details', {})                                     
-# Add reliability metric
+                                        signal_details = {
+                                            'signal': signal_info['signal'],
+                                            'emoji': signal_info['emoji'],
+                                            'formatted_text': signal_info['formatted_text']
+                                        }                                   
+                                        # Add reliability metric
                                         try:
                                             from src.backtesting.signal_reliability import SignalReliabilityService
                                             reliability_service = SignalReliabilityService()
