@@ -110,3 +110,15 @@ Wanna join the development base? DM me on instagram at @aquilare or email at nic
 ---
 
 *Happy trading!*
+...
+
+---
+## ⚠️ Disclaimer
+
+This project is for informational and educational purposes only.  
+No investment advice is provided. All trading strategies, signals, and metrics are experimental and may not be accurate or profitable.  
+You are solely responsible for your own financial decisions and any losses incurred.  
+Past performance does not guarantee future results.  
+Use this bot at your own risk.
+
+---
