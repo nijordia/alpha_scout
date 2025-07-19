@@ -1,5 +1,3 @@
-api_key: "8093282303:AAEqfy1qngjmQu9N1Y6N1ImluEn-DfxzPts"
-chat_id: "324286016"
 mean_reversion_window: 50  # Window size for mean reversion signals
 mean_reversion_threshold: 1.5  # Number of standard deviations for mean reversion
 
