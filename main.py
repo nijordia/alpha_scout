@@ -60,7 +60,7 @@ def main():
     # Configure logging
     log_file = os.path.join(os.path.dirname(__file__), "market_signals.log")
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(log_file),
@@ -90,11 +90,21 @@ def main():
         if args.test_user:
             logger.info(f"Testing for specific user: {args.test_user}")
             
-        # Handle async or sync implementation
+        # Pass token to daily notifications
         if asyncio.iscoroutinefunction(send_daily_notifications):
-            asyncio.run(send_daily_notifications(force=args.force, test_user=args.test_user, ignore_time=args.ignore_time))
+            asyncio.run(send_daily_notifications(
+                force=args.force,
+                test_user=args.test_user,
+                ignore_time=args.ignore_time,
+                token=token  # <-- pass token here
+            ))
         else:
-            send_daily_notifications(force=args.force, test_user=args.test_user, ignore_time=args.ignore_time)
+            send_daily_notifications(
+                force=args.force,
+                test_user=args.test_user,
+                ignore_time=args.ignore_time,
+                token=token  # <-- pass token here
+            )
             
         logger.info("Daily signal generation complete")
     else:

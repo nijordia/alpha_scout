@@ -10,3 +10,4 @@ yfinance>=0.1.70  # Added for stock data fetching
 pyyaml>=6.0.0  # Added for configuration files
 pytz>=2022.1  # Added for timezone handling in python-telegram-bot
 tzlocal>=4.2  # Added for local timezone support
+python-dotenv>=0.19.0  # Added for environment variable management

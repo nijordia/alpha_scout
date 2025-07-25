@@ -39,7 +39,8 @@ class SignalReliabilityService:
                             preferred_period: int = 30,
                             custom_start_date: str = None,
                             custom_end_date: str = None) -> Dict[str, Any]:
-        """Calculate reliability metrics for a specific signal using ONLY real data.
+        """
+        Calculate reliability metrics for a specific signal using ONLY real data.
         Optionally allows custom date range for historical data to match user experiment period.
         """
         # Check cache first for performance
@@ -75,7 +76,7 @@ class SignalReliabilityService:
         signals_df = strategy.detect_signals()
         buy_signals = signals_df[signals_df['signal'] == 'buy']
 
-        if len(buy_signals) < 0:
+        if len(buy_signals) < 3:
             logger.warning(f"Insufficient buy signals for {ticker} with {strategy_type} strategy")
             raise ValueError(f"Insufficient buy signals for {ticker} with {strategy_type} strategy")
 
@@ -110,8 +111,8 @@ class SignalReliabilityService:
         self._cache_results(ticker, strategy_type, strategy_params, results)
         logger.info(f"Calculated REAL metrics for {ticker} using {strategy_type}: {results}")
         return results
-
-
+    
+    
     def _get_strategy_class(self, strategy_type: str):
         """Get the strategy class based on strategy type."""
         if strategy_type == 'mean_reversion':

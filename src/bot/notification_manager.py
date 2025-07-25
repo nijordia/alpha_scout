@@ -56,19 +56,14 @@ class NotificationManager:
             period = reliability.get('period', 30)
             win_rate = reliability.get('win_rate', 0)
             avg_return = reliability.get('avg_return', 0)
-            # Calculate vs BH if possible
             bh_return = reliability.get('buy_hold_return', None)
+            vs_bh_text = ""
             if bh_return is not None:
                 vs_bh = avg_return - bh_return
-                vs_bh_text = f" | vs BH: {'+' if vs_bh > 0 else ''}{vs_bh:.1f}%"
-            else:
-                vs_bh_text = ""
-            outperformance = reliability.get('market_outperformance', 0)
-
-            message += f"\n*Signal Reliability:*\n"
-            message += f"Win Rate: {win_rate:.1f}% ({period}d)\n"
-            message += f"Avg Return: {'+' if avg_return > 0 else ''}{avg_return:.1f}%{vs_bh_text}\n"
-            message += f"Beats Market: {outperformance:.1f}% of trades\n"
+                vs_bh_text = f" | vs BH: {'+' if vs_bh > 0 else ''}{vs_bh:.2f}%"
+            message += (
+                f"\n| Win: {win_rate:.1f}% | Avg: {'+' if avg_return > 0 else ''}{avg_return:.1f}%{vs_bh_text}\n"
+            )
 
         return await self.send_notification(chat_id, message)
 

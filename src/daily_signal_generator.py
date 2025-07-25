@@ -36,21 +36,17 @@ def load_config():
         logger.error(f"Error loading configuration: {e}")
         return {}
 
-async def send_daily_notifications(force=False, test_user=None, ignore_time=False):
+async def send_daily_notifications(force=False, test_user=None, ignore_time=False, token=None):
     """
     Generate signals and send notifications to users
-    
-    Parameters:
-    -----------
-    force : bool
-        If True, send notifications regardless of notification time
     """
     # Load configuration
     config = load_config()
-    api_key = config.get('api_key')
+    # Use passed token, or environment, or config
+    api_key = token or os.environ.get('TELEGRAM_API_KEY') or config.get('api_key')
     
     if not api_key:
-        logger.error("No API key found in configuration")
+        logger.error("No API key found in configuration or environment")
         return
     
     # Initialize components
