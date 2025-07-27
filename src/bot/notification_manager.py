@@ -39,8 +39,8 @@ class NotificationManager:
             self.logger.error(f"Error sending notification to {chat_id}: {e}")
             return False
 
+    # ...existing code...
     async def notify_signal(self, chat_id=None, stock=None, signal_type=None, signal_value=None, additional_details=None):
-        """Send a signal notification"""
         chat_id = chat_id or self.chat_id
         signal_type_display = signal_type.replace("_", " ").title() if signal_type else ""
         emoji = "🟢" if signal_value == "buy" else "🔴" if signal_value == "sell" else "⚪"
@@ -50,9 +50,9 @@ class NotificationManager:
         message += f"*Signal Type:* {signal_type_display}\n"
         message += f"*Signal:* {emoji} {signal_value.upper()}\n"
 
-        # Add reliability metrics if available
-        if additional_details and 'reliability' in additional_details:
-            reliability = additional_details['reliability']
+        # Use metrics from additional_details['metrics']
+        if additional_details and 'metrics' in additional_details:
+            reliability = additional_details['metrics']
             period = reliability.get('period', 30)
             win_rate = reliability.get('win_rate', 0)
             avg_return = reliability.get('avg_return', 0)
@@ -60,12 +60,17 @@ class NotificationManager:
             vs_bh_text = ""
             if bh_return is not None:
                 vs_bh = avg_return - bh_return
-                vs_bh_text = f" | vs BH: {'+' if vs_bh > 0 else ''}{vs_bh:.2f}%"
+                vs_bh_text = f"{'+' if vs_bh > 0 else ''}{vs_bh:.2f}%"
             message += (
-                f"\n| Win: {win_rate:.1f}% | Avg: {'+' if avg_return > 0 else ''}{avg_return:.1f}%{vs_bh_text}\n"
-            )
+                f"\n*Reliability Metrics:*\n"
+                f"- Win Rate: `{win_rate:.1f}%`\n"
+                f"- Avg Return: `{'+' if avg_return > 0 else ''}{avg_return:.2f}%`\n"
+                f"- Holding it for: `{period}` days\n"
+                f"- vs Buy & Hold: `{vs_bh_text}`\n"
 
-        return await self.send_notification(chat_id, message)
+            )
+        await self.send_notification(chat_id, message)
+    # ...existing code...
 
     async def send_daily_summary(self, chat_id=None, signals_summary=None):
         """

@@ -14,3 +14,8 @@ volatility_breakout_window: 20  # Window for breakout detection
 notification_interval: 60  # in seconds
 backtest_start_date: "2022-01-01"
 backtest_end_date: "2023-01-01"
+
+reliability:
+  experiment_period: 365      # Number of days for backtest window
+  preferred_period: 30        # Holding period for signal reliability
+  cache_expiry: 86400         # Cache expiry in seconds (default: 24 hours)

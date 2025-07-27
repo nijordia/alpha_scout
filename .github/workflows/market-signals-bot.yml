@@ -4,8 +4,8 @@ on:
   schedule:
     # Run at 30 minutes after NYSE close (4:30 PM ET)
     # This is 21:30 UTC during standard time, 20:30 UTC during daylight saving
-    - cron: '30 20 * * 1-5'  # During daylight saving
-    - cron: '30 21 * * 1-5'  # During standard time
+    - cron: '30 20 * * 0,1,2,3,4'  # Sunday to Thursday during daylight saving
+    - cron: '30 21 * * 0,1,2,3,4'  # Sunday to Thursday during standard time
   
   # Allow manual triggering for testing
   workflow_dispatch:
