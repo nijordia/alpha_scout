@@ -1,21 +1,15 @@
-mean_reversion_window: 50  # Window size for mean reversion signals
-mean_reversion_threshold: 1.5  # Number of standard deviations for mean reversion
-
-# Moving Average Crossover parameters
-momentum_short_window: 20  # Short-term moving average window
-momentum_long_window: 50   # Long-term moving average window
+backtest_end_date: '2023-01-01'
+backtest_start_date: '2022-01-01'
+mean_reversion_threshold: 1.5
+mean_reversion_window: 50
+momentum_long_window: 50
+momentum_short_window: 20
 momentum_threshold: 0.1
-
-# Volatility Breakout parameters
-volatility_atr_window: 14       # Window for ATR calculation
-volatility_atr_multiplier: 1.5  # Multiplier for ATR to determine significant breakouts
-volatility_breakout_window: 20  # Window for breakout detection
-
-notification_interval: 60  # in seconds
-backtest_start_date: "2022-01-01"
-backtest_end_date: "2023-01-01"
-
+notification_interval: 60
 reliability:
-  experiment_period: 365      # Number of days for backtest window
-  preferred_period: 30        # Holding period for signal reliability
-  cache_expiry: 86400         # Cache expiry in seconds (default: 24 hours)
+
+  experiment_period: 800
+  preferred_period: 60
+volatility_atr_multiplier: 1.5
+volatility_atr_window: 14
+volatility_breakout_window: 20

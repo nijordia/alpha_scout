@@ -218,6 +218,7 @@ def calculate_win_vs_market(signals_df, benchmark_df, holding_period=14):
     return (wins / total) * 100
 
 def performance_summary(prices, returns, signals_df=None, benchmark_df=None, holding_period=14):
+
     """
     Generate a comprehensive performance summary.
     
@@ -247,3 +248,89 @@ def performance_summary(prices, returns, signals_df=None, benchmark_df=None, hol
             summary["win_vs_market"] = calculate_win_vs_market(signals_df, benchmark_df, holding_period)
     
     return summary
+
+
+
+def extract_trades_from_signals(signals_df: pd.DataFrame) -> list:
+    """
+    Extract trade pairs (entry/exit) from a DataFrame of signals.
+    Returns a list of dicts: {'entry_date', 'entry_price', 'exit_date', 'exit_price', 'signal_type'}
+    """
+    trades = []
+    position = None
+    entry_pos = None  # Use integer position, not index label
+
+    for pos, row in enumerate(signals_df.itertuples(index=False)):
+        signal = getattr(row, 'signal', None)
+        if signal == 'buy' and position is None:
+            position = 'long'
+            entry_pos = pos
+        elif signal == 'sell' and position == 'long':
+            entry_row = signals_df.iloc[entry_pos]
+            trades.append({
+                'entry_date': entry_row['date'],
+                'entry_price': entry_row['close'],
+                'exit_date': getattr(row, 'date'),
+                'exit_price': getattr(row, 'close'),
+                'signal_type': 'long'
+            })
+            position = None
+            entry_pos = None
+    # Handle open position at end of data
+    if position == 'long' and entry_pos is not None:
+        entry_row = signals_df.iloc[entry_pos]
+        exit_row = signals_df.iloc[-1]
+        trades.append({
+            'entry_date': entry_row['date'],
+            'entry_price': entry_row['close'],
+            'exit_date': exit_row['date'],
+            'exit_price': exit_row['close'],
+            'signal_type': 'long'
+        })
+    return trades
+
+
+def calculate_win_rate_from_trades(trades: List[Dict[str, any]], target_return=None) -> float:
+    """
+    Calculate win rate from a list of trade dicts.
+    """
+    wins = 0
+    total = 0
+    for trade in trades:
+        entry = trade['entry_price']
+        exit = trade['exit_price']
+        ret = (exit - entry) / entry * 100
+        if trade['signal_type'] == 'long':
+            is_win = (target_return is not None and ret >= target_return) or \
+                     (target_return is None and ret > 0)
+        else:
+            continue  # Only long trades for now
+        if is_win:
+            wins += 1
+        total += 1
+    if total == 0:
+        return 0
+    return (wins / total) * 100
+
+def calculate_average_return_from_trades(trades: List[Dict[str, any]]) -> float:
+    """
+    Calculate average return from a list of trade dicts.
+    """
+    returns = []
+    for trade in trades:
+        entry = trade['entry_price']
+        exit = trade['exit_price']
+        ret = (exit - entry) / entry * 100
+        if trade['signal_type'] == 'long':
+            returns.append(ret)
+        else:
+            continue  # Only long trades for now
+    if not returns:
+        return 0
+    return sum(returns) / len(returns)
+
+# Update your summary and reliability logic to use the new functions:
+# Example usage:
+# trades = extract_trades_from_signals(signals_df)
+# win_rate = calculate_win_rate_from_trades(trades)
+# avg_return = calculate_average_return_from_trades(trades)

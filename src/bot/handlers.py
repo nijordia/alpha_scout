@@ -16,6 +16,7 @@ from .user_preferences import UserPreferencesManager
 from src.data.fetcher import fetch_stock_data
 from src.market_signals.mean_reversion import MeanReversionSignal
 from src.market_signals.signal_service import SignalService
+from src.utils.config_loader import get_reliability_config
 
 
 # Add these new states for the conversation handler
@@ -276,19 +277,13 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def param_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Show signal parameter settings"""
+    """Show signal and reliability parameter settings"""
     user_id = str(update.effective_user.id)
     preferences = user_prefs.get_user_preferences(user_id)
     signal_types = preferences.get("signal_types", [])
 
     # Load reliability test parameters from config
-    config_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        'config', 'config.yml'
-    )
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    reliability_cfg = config.get('reliability', {})
+    reliability_cfg = get_reliability_config()
 
     # Create message with current parameter settings
     message = "*Signal Parameter Settings*\n\n"
@@ -298,6 +293,10 @@ async def param_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     message += f"- Experiment Period: `{reliability_cfg.get('experiment_period', 365)}`\n"
     message += f"- Preferred Period: `{reliability_cfg.get('preferred_period', 30)}`\n"
     message += f"- Cache Expiry: `{reliability_cfg.get('cache_expiry', 86400)}`\n\n"
+    message += "Update reliability parameters:\n"
+    message += "`/setparam preferred_period VALUE`\n"
+    message += "`/setparam experiment_period VALUE`\n"
+    message += "`/setparam cache_expiry VALUE`\n\n"
 
     if "mean_reversion" in signal_types:
         mr_params = preferences.get("signal_params", {}).get("mean_reversion", {})
@@ -306,6 +305,9 @@ async def param_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         message += f"*Mean Reversion Parameters:*\n"
         message += f"- Window: `{window}`\n"
         message += f"- Threshold: `{threshold}`\n\n"
+        message += "Update Mean Reversion parameters:\n"
+        message += "`/setparam mean_reversion window VALUE`\n"
+        message += "`/setparam mean_reversion threshold VALUE`\n\n"
 
     if "ma_crossover" in signal_types:
         ma_params = preferences.get("signal_params", {}).get("ma_crossover", {})
@@ -314,6 +316,9 @@ async def param_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         message += f"*Moving Average Crossover Parameters:*\n"
         message += f"- Short Window: `{short_window}`\n"
         message += f"- Long Window: `{long_window}`\n\n"
+        message += "Update MA Crossover parameters:\n"
+        message += "`/setparam ma_crossover short_window VALUE`\n"
+        message += "`/setparam ma_crossover long_window VALUE`\n\n"
 
     if "volatility_breakout" in signal_types:
         vb_params = preferences.get("signal_params", {}).get("volatility_breakout", {})
@@ -324,28 +329,50 @@ async def param_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         message += f"- ATR Window: `{atr_window}`\n"
         message += f"- ATR Multiplier: `{atr_multiplier}`\n"
         message += f"- Breakout Window: `{breakout_window}`\n\n"
-
-    message += "*Update Parameters Commands:*\n"
-    message += "For Mean Reversion:\n"
-    message += "`/setparam mean_reversion window VALUE`\n"
-    message += "`/setparam mean_reversion threshold VALUE`\n\n"
-    message += "For Moving Average Crossover:\n"
-    message += "`/setparam ma_crossover short_window VALUE`\n"
-    message += "`/setparam ma_crossover long_window VALUE`\n\n"
-    message += "For Volatility Breakout:\n"
-    message += "`/setparam volatility_breakout atr_window VALUE`\n"
-    message += "`/setparam volatility_breakout atr_multiplier VALUE`\n"
-    message += "`/setparam volatility_breakout breakout_window VALUE`\n"
+        message += "Update Volatility Breakout parameters:\n"
+        message += "`/setparam volatility_breakout atr_window VALUE`\n"
+        message += "`/setparam volatility_breakout atr_multiplier VALUE`\n"
+        message += "`/setparam volatility_breakout breakout_window VALUE`\n"
 
     await update.message.reply_text(message, parse_mode="Markdown")
 
 
 
+
 async def set_param(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Set a parameter value for a signal type"""
+    """Set a parameter value for a signal type or reliability config"""
     user_id = str(update.effective_user.id)
-    
-    # Check if enough arguments are provided
+
+    reliability_params = ["preferred_period", "experiment_period", "cache_expiry"]
+
+    # Handle reliability config parameters (e.g., /setparam preferred_period 14)
+    if len(context.args) == 2 and context.args[0].lower() in reliability_params:
+        param_name = context.args[0].lower()
+        param_value_str = context.args[1]
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            'config', 'config.yml'
+        )
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        try:
+            param_value = int(param_value_str)
+            if param_value <= 0:
+                raise ValueError(f"{param_name} must be greater than 0")
+        except ValueError as e:
+            await update.message.reply_text(f"Invalid reliability parameter value: {str(e)}")
+            return
+
+        config.setdefault("reliability", {})[param_name] = param_value
+        with open(config_path, 'w') as f:
+            yaml.safe_dump(config, f)
+        await update.message.reply_text(
+            f"Reliability parameter updated: {param_name} = {param_value}"
+        )
+        await param_settings(update, context)
+        return
+
+    # Check if enough arguments are provided for signal strategy parameters
     if len(context.args) < 3:
         await update.message.reply_text(
             "Please provide a signal type, parameter name, and value.\n"
@@ -353,11 +380,11 @@ async def set_param(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             parse_mode="HTML"
         )
         return
-    
+
     signal_type = context.args[0].lower()
     param_name = context.args[1].lower()
     param_value_str = context.args[2]
-    
+
     # Validate signal type
     valid_signal_types = ["mean_reversion", "ma_crossover", "volatility_breakout"]
     if signal_type not in valid_signal_types:
@@ -365,21 +392,21 @@ async def set_param(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"Invalid signal type: {signal_type}. Valid types are: {', '.join(valid_signal_types)}"
         )
         return
-    
+
     # Validate parameter name for each signal type
     valid_params = {
         "mean_reversion": ["window", "threshold"],
         "ma_crossover": ["short_window", "long_window"],
         "volatility_breakout": ["atr_window", "atr_multiplier", "breakout_window"]
     }
-    
+
     if param_name not in valid_params.get(signal_type, []):
         await update.message.reply_text(
             f"Invalid parameter for {signal_type}: {param_name}. "
             f"Valid parameters are: {', '.join(valid_params.get(signal_type, []))}"
         )
         return
-    
+
     # Convert and validate parameter value
     try:
         if param_name in ["window", "short_window", "long_window", "atr_window", "breakout_window"]:
@@ -387,20 +414,20 @@ async def set_param(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             param_value = int(param_value_str)
             if param_value <= 0:
                 raise ValueError(f"{param_name} must be greater than 0")
-            
+
             # Additional validation for short_window < long_window
             if param_name == "short_window" and signal_type == "ma_crossover":
                 ma_params = user_prefs.get_signal_params(user_id, "ma_crossover")
                 long_window = ma_params.get("long_window", 50)
                 if param_value >= long_window:
                     raise ValueError(f"short_window must be less than long_window ({long_window})")
-            
+
             if param_name == "long_window" and signal_type == "ma_crossover":
                 ma_params = user_prefs.get_signal_params(user_id, "ma_crossover")
                 short_window = ma_params.get("short_window", 20)
                 if param_value <= short_window:
                     raise ValueError(f"long_window must be greater than short_window ({short_window})")
-                
+
         elif param_name in ["threshold", "atr_multiplier"]:
             # These parameters should be floats > 0
             param_value = float(param_value_str)
@@ -411,19 +438,19 @@ async def set_param(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except ValueError as e:
         await update.message.reply_text(f"Invalid parameter value: {str(e)}")
         return
-    
+
     # Update the parameter
     updated = user_prefs.update_signal_params(user_id, signal_type, {param_name: param_value})
-    
+
     if updated:
         await update.message.reply_text(
             f"Parameter updated: {signal_type} {param_name} = {param_value}"
         )
-        
         # Show the updated settings
         await param_settings(update, context)
     else:
         await update.message.reply_text("Failed to update parameter. Please try again.")
+
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
